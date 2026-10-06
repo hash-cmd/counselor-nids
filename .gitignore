@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+
+# Datasets (~8 GB, see data/README.md for sources)
+data/raw/
+data/processed/
+
+# Trained models and experiment outputs
+models/
+results/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
