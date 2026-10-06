@@ -1,8 +1,5 @@
-from sklearn.dummy import DummyClassifier
-
 from nids.counselor import CounselorNetwork
-
-from .test_detector import accurate, make_detector, split_brain
+from tests.helpers import accurate, always, split_brain
 
 
 def test_conflicts_resolved_by_counselor_advice(blobs):
@@ -56,10 +53,6 @@ def test_conflicted_counselor_gives_no_advice(blobs):
     # "bad" conflicts on everything, so it has no unambiguous history to advise from
     assert (results["counselor"] == "good").all()
 
-
-def always(df, name, attack):
-    """Detector that is never conflicted and always says attack (or normal)."""
-    return make_detector(df, name, {"c": DummyClassifier(strategy="constant", constant=attack)})
 
 
 def test_cross_check_flips_normal_verdicts_to_attack_only(blobs):

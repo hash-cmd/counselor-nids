@@ -5,7 +5,7 @@ from sklearn.tree import DecisionTreeClassifier
 from nids.detector.model import DetectorModel, split_signatures
 from nids.detector.preprocessing import build_preprocessor
 
-from .conftest import FEATURES
+from tests.helpers import FEATURES
 
 
 def fit_model(df, alpha, n_clusters=1):
@@ -64,3 +64,11 @@ def test_reselect_changes_selection_without_retraining(blobs):
     assert model.reselect(1.0).clusters[0].selected == ["tree", "always_attack"]
     assert model.reselect(0.0).clusters[0].selected == ["tree"]
     assert model.classifiers["tree"] is tree
+
+
+def test_float64_input_works_after_float32_training(blobs):
+    data = blobs.astype({f: "float32" for f in FEATURES})
+    model = fit_model(data, alpha=0.001, n_clusters=2)
+    Xt = model.transform(blobs[FEATURES].astype("float64"))
+    assert Xt.dtype == "float32"
+    assert len(model.assign_clusters(Xt)) == len(blobs)

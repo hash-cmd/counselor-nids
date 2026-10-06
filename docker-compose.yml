@@ -1,0 +1,51 @@
+# Counselors-based NIDS as services (paper Figure 1).
+#
+#   docker-compose run --rm train      # once: train detectors inside the image (needs data/raw)
+#   docker-compose up                  # redis, observer, 2 detectors, extractor, monitor
+#
+# Models are trained inside the container so they match its scikit-learn version.
+
+x-nids: &nids
+  build: .
+  image: counselor-nids
+  environment:
+    NIDS_REDIS_URL: redis://redis:6379/0
+  volumes:
+    - ./models:/app/models
+    - ./data:/app/data
+  depends_on:
+    - redis
+
+services:
+  redis:
+    image: redis:7-alpine
+
+  train:
+    <<: *nids
+    profiles: [setup]
+    environment:
+      NIDS_DATA_DIR: /app/data/raw
+    command: ["train", "scenario2", "--fraction", "0.05",
+              "--models", "/app/models", "--replay", "/app/data/replay/scenario2.csv"]
+
+  observer:
+    <<: *nids
+    command: ["observe"]
+
+  detector1:
+    <<: *nids
+    command: ["detect", "/app/models/detector1.joblib", "--sources", "cicids2017", "--cross-check"]
+
+  detector2:
+    <<: *nids
+    command: ["detect", "/app/models/detector2.joblib", "--sources", "cicids2017", "--cross-check"]
+
+  extractor:
+    <<: *nids
+    command: ["extract", "/app/data/replay/scenario2.csv", "--source", "cicids2017",
+              "--wait-for", "2", "--rate", "2000"]
+    restart: "no"
+
+  monitor:
+    <<: *nids
+    command: ["monitor", "--interval", "5"]

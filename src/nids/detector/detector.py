@@ -86,9 +86,10 @@ class Detector:
 
     def advise_many(self, timestamps: np.ndarray, window: float):
         """Vectorised ``advise``: returns (found, prediction, confidence) arrays."""
-        ts = self._history["timestamp"].to_numpy()
-        predictions = self._history["prediction"].to_numpy(dtype=bool)
-        confidences = self._history["confidence"].to_numpy()
+        history = self._history  # snapshot: detect() may replace it from another thread
+        ts = history["timestamp"].to_numpy()
+        predictions = history["prediction"].to_numpy(dtype=bool)
+        confidences = history["confidence"].to_numpy()
         lo = np.searchsorted(ts, timestamps - window, side="left")
         hi = np.searchsorted(ts, timestamps, side="right")
         found = hi > lo
@@ -105,6 +106,11 @@ class Detector:
 
     def clear_history(self) -> None:
         self._history = self._history.iloc[0:0]
+
+    def trim_history(self, max_entries: int) -> None:
+        """Keep only the most recent decisions (bounds memory in a long-running service)."""
+        if len(self._history) > max_entries:
+            self._history = self._history.iloc[-max_entries:].reset_index(drop=True)
 
     def learn(self, samples: pd.DataFrame, labels) -> None:
         """Store advised samples as new signatures (Figure 1, steps 8.A-C)."""

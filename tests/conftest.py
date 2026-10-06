@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 from sklearn.datasets import make_classification
 
-FEATURES = [f"f{i}" for i in range(6)]
+from tests.helpers import FEATURES
 
 
 @pytest.fixture

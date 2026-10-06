@@ -80,8 +80,9 @@ def main():
 
     out = RESULTS_DIR / "self_learning"
     out.mkdir(parents=True, exist_ok=True)
-    table.to_csv(out / "chunks.csv", index=False)
-    print("\nwritten to", out / "chunks.csv")
+    path = out / ("chunks.csv" if args.cross_check else "chunks_conflicts_only.csv")
+    table.to_csv(path, index=False)
+    print("\nwritten to", path)
 
 
 if __name__ == "__main__":

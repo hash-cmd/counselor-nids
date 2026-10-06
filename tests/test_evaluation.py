@@ -4,7 +4,7 @@ import pytest
 from nids.counselor import CounselorNetwork
 from nids.evaluation import compare, conflict_summary, metrics
 
-from .test_detector import accurate, split_brain
+from tests.helpers import accurate, split_brain
 
 
 def test_metrics():

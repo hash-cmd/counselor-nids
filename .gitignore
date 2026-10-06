@@ -8,6 +8,7 @@ __pycache__/
 # Datasets (~8 GB, see data/README.md for sources)
 data/raw/
 data/processed/
+data/replay/
 
 # Trained models and experiment outputs
 models/

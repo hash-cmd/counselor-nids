@@ -86,7 +86,9 @@ class DetectorModel:
         )
 
     def transform(self, X: pd.DataFrame) -> np.ndarray:
-        return self.preprocessor.transform(X)
+        # One dtype for training and serving: K-Means rejects inputs whose dtype
+        # differs from its fitted centres (JSON-decoded frames arrive as float64).
+        return np.asarray(self.preprocessor.transform(X), dtype=np.float32)
 
     def assign_clusters(self, Xt: np.ndarray) -> np.ndarray:
         """Nearest centroid by Euclidean distance."""

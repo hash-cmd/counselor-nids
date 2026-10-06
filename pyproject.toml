@@ -13,7 +13,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "jupyterlab", "nbconvert"]
+service = ["redis"]
+live = ["redis", "cicflowmeter"]
+dev = ["pytest", "jupyterlab", "nbconvert", "redis", "fakeredis"]
+
+[project.scripts]
+nids = "nids.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -24,3 +29,6 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.pyrefly]
+search-path = ["src", "."]

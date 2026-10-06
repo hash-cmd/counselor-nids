@@ -12,7 +12,7 @@ learns from the answer.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev]"          # add ",live" for live capture
 ```
 
 Datasets go in `data/raw/` — see [data/README.md](data/README.md).
@@ -30,6 +30,10 @@ python experiments/tune.py scenario1 --protocol holdout
 python experiments/run.py scenario2                       # ~5 min, ~842k test flows per seed
 python experiments/run.py scenario1 --protocol kddtest --cross-check-alpha 0.005
 python experiments/run.py scenario1 --protocol holdout --cross-check-min-accuracy 0.99
+
+# 3. self-learning over a time-ordered stream (~70 s at 20%)
+python experiments/self_learning.py --fraction 0.2                   # with cross-check
+python experiments/self_learning.py --fraction 0.2 --no-cross-check  # paper's conflicts only
 ```
 
 Unknown traffic is split into validation (tuning) and test (reporting): Scenario 2 uses
@@ -60,6 +64,71 @@ Scenario 1 (NSL-KDD) has no overall accuracy in the paper. With `kddtest` the cr
 the traffic detector (72.7% → 80.4%) but not the connection detector; with `holdout` all
 methods are ~99% for connection/traffic.
 
+### Self-learning
+
+Streaming the Scenario 2 test flows in time order and retraining after each chunk on the
+advised samples (paper Figure 1, steps 8.A-C), each detector's **own** accuracy — before any
+advice — rises on attacks it was never trained on (20% sample, seed 0):
+
+| Standalone accuracy | Frozen | Self-learning, cross-check | Self-learning, conflicts only |
+|---|---|---|---|
+| Detector 2 on DoS Hulk (chunk 1) | 5.66% | 99.74% | 73.33% |
+| Detector 1 on PortScan (chunk 9) | 32.51% | 99.87% | 32.18% |
+
+With the paper's conflict-only advice, detector 1 never learns PortScan: it is confidently
+wrong on those flows, so it never asks. `notebooks/02_results.ipynb` plots every chunk.
+
+## Distributed system
+
+The same detectors run as independent services over Redis, following the paper's Figure 1:
+
+| Service | Role |
+|---|---|
+| `nids extract` | **Extractor** — replays a flow CSV, or captures live traffic, into the Unknown Samples stream |
+| `nids observe` | **Observer** — routes each batch to the detectors subscribed to its data source |
+| `nids detect` | **Detector** — classifies its inbox, requests advice from the others over Redis, answers their requests, optionally retrains (`--retrain-every N`) |
+| `nids monitor` | live counters: accuracy, detection rate, conflicts, advice, cross-checks |
+
+Attack decisions are published to the `nids:alerts` stream.
+
+**Natively** (needs a Redis server):
+
+```bash
+nids train scenario2 --fraction 0.05     # models/*.joblib + data/replay/scenario2.csv (unseen flows)
+nids observe &
+nids detect models/detector1.joblib --sources cicids2017 --cross-check &
+nids detect models/detector2.joblib --sources cicids2017 --cross-check &
+nids extract data/replay/scenario2.csv --source cicids2017 --wait-for 2
+nids monitor --once
+```
+
+**With Docker** (models are trained inside the image so they match its library versions):
+
+```bash
+docker-compose run --rm train
+docker-compose up
+```
+
+Both give 99.58% accuracy and 99.28% detection rate on the 42,112 replayed flows.
+
+### Live traffic
+
+```bash
+pip install -e ".[live]"
+sudo .venv/bin/nids extract --live eth0 --source cicids2017      # or: --live capture.pcap
+```
+
+Flows come from the Python `cicflowmeter` (run through `nids.service.flowmeter`, because the
+package's own CLI is broken in 0.5.0) and are converted to CICIDS2017 names and units
+(`src/nids/data/flow_features.py`). The Python port computes some features differently
+from the Java CICFlowMeter the models were trained on (e.g. packet counts), so accuracy on
+live traffic has **not** been measured and will be lower than the experiments.
+
+## CSE-CIC-IDS2018
+
+`nids.data.cse_cic_ids2018.load_cse_cic_ids2018` loads the 2018 data with CICIDS2017 column
+names and real timestamps. It is set aside for later work and not used by the experiments.
+
 ## Differences from the paper
 
 - scikit-learn stand-ins for the Weka classifiers; NBTree, ADTree and KStar are not available
@@ -81,10 +150,13 @@ methods are ~99% for connection/traffic.
 
 | Path | Contents |
 |---|---|
-| `src/nids/data/` | Dataset loaders (NSL-KDD, CICIDS2017) |
+| `src/nids/data/` | Dataset loaders (NSL-KDD, CICIDS2017, CSE-CIC-IDS2018) and feature-name mapping |
 | `src/nids/detector/` | Classifier selection and detection (Algorithms 1 & 2) |
 | `src/nids/counselor/` | Advice exchange between detectors |
 | `src/nids/scenarios.py` | Scenario setups with signature / validation / test splits |
-| `experiments/` | `tune.py` (validation) and `run.py` (test) |
-| `notebooks/` | Exploration only — imports the loaders, holds no cleaning logic (`jupyter lab`) |
+| `src/nids/service/` | Distributed services: extractor, observer, detector, monitor, live capture |
+| `src/nids/cli.py` | `nids` command |
+| `experiments/` | `tune.py` (validation), `run.py` (test), `self_learning.py` |
+| `notebooks/` | `01` explores the datasets, `02` plots the results — no logic of their own |
+| `Dockerfile`, `docker-compose.yml` | Container setup |
 | `tests/` | pytest suite |
