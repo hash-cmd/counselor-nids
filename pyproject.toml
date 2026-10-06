@@ -15,7 +15,11 @@ dependencies = [
 [project.optional-dependencies]
 service = ["redis"]
 live = ["redis", "cicflowmeter"]
-dev = ["pytest", "jupyterlab", "nbconvert", "redis", "fakeredis"]
+web = [
+    "redis", "django", "djangorestframework", "djangorestframework-simplejwt",
+    "django-cors-headers", "channels", "daphne", "python-decouple",
+]
+dev = ["pytest", "jupyterlab", "nbconvert", "fakeredis", "nids[web]"]
 
 [project.scripts]
 nids = "nids.cli:main"
@@ -31,4 +35,4 @@ where = ["src"]
 testpaths = ["tests"]
 
 [tool.pyrefly]
-search-path = ["src", "."]
+search-path = ["src", ".", "backend"]

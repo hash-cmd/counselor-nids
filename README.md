@@ -12,7 +12,7 @@ learns from the answer.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"          # add ",live" for live capture
+pip install -e ".[dev]"          # includes the web API deps; add ",live" for live capture
 ```
 
 Datasets go in `data/raw/` — see [data/README.md](data/README.md).
@@ -102,11 +102,11 @@ nids extract data/replay/scenario2.csv --source cicids2017 --wait-for 2
 nids monitor --once
 ```
 
-**With Docker** (models are trained inside the image so they match its library versions):
+**With Docker, headless** (models are trained inside the image so they match its library versions):
 
 ```bash
 docker-compose run --rm train
-docker-compose up
+docker-compose --profile headless up redis observer detector1 detector2 extractor monitor
 ```
 
 Both give 99.58% accuracy and 99.28% detection rate on the 42,112 replayed flows.
@@ -123,6 +123,51 @@ package's own CLI is broken in 0.5.0) and are converted to CICIDS2017 names and 
 (`src/nids/data/flow_features.py`). The Python port computes some features differently
 from the Java CICFlowMeter the models were trained on (e.g. packet counts), so accuracy on
 live traffic has **not** been measured and will be lower than the experiments.
+
+## Dashboard (Django API + Next.js)
+
+A web dashboard shows the detection as it happens: start/stop a replay, per-detector stats,
+throughput, how each decision was made (unanimous / counselor advice / cross-check / fallback)
+and the stream of attack alerts, plus a results page with the experiment charts.
+
+```
+detector services --Redis--> Django API (DRF + Channels) --REST + WebSocket--> Next.js
+```
+
+| API | |
+|---|---|
+| `POST /api/auth/token/`, `/api/auth/token/refresh/` | JWT login (simplejwt) |
+| `GET /api/auth/me/` | current user |
+| `GET /api/detectors/` | live counters per detector + replay state |
+| `GET /api/alerts/?limit=&after=` | latest attack decisions |
+| `GET /api/results/` | experiment comparisons and self-learning curves |
+| `GET /api/replay/`, `POST /api/replay/start/`, `POST /api/replay/stop/` | replay control |
+| `ws://…/ws/live/?token=<access>` | stats every second, new alerts, reset on a new replay |
+
+The API starts a replay by launching the Observer, one detector service per model in `models/`
+and an Extractor as subprocesses — the same services as the command line.
+
+**Locally** (needs Redis, and `nids train scenario2` run once):
+
+```bash
+cd backend
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver            # API + WebSocket on :8000 (Daphne)
+cd ../frontend && npm install && npm run dev   # dashboard on :3000
+```
+
+**With Docker:**
+
+```bash
+docker-compose run --rm train
+docker-compose run --rm api python manage.py createsuperuser
+docker-compose up                     # dashboard on http://localhost:3000
+```
+
+Backend settings come from environment variables (or `backend/.env`): `DJANGO_SECRET_KEY`,
+`DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `NIDS_REDIS_URL`, `NIDS_ROOT`,
+`DJANGO_DB_PATH`. Tests: `cd backend && python manage.py test monitoring`.
 
 ## CSE-CIC-IDS2018
 
@@ -158,5 +203,7 @@ names and real timestamps. It is set aside for later work and not used by the ex
 | `src/nids/cli.py` | `nids` command |
 | `experiments/` | `tune.py` (validation), `run.py` (test), `self_learning.py` |
 | `notebooks/` | `01` explores the datasets, `02` plots the results — no logic of their own |
+| `backend/` | Django API: REST endpoints, JWT auth, WebSocket live feed, replay control |
+| `frontend/` | Next.js dashboard |
 | `Dockerfile`, `docker-compose.yml` | Container setup |
 | `tests/` | pytest suite |

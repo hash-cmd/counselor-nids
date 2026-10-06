@@ -1,0 +1,16 @@
+from django.urls import path
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
+from . import views
+
+urlpatterns = [
+    path("auth/token/", TokenObtainPairView.as_view(), name="token"),
+    path("auth/token/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
+    path("auth/me/", views.MeView.as_view(), name="me"),
+    path("detectors/", views.DetectorsView.as_view(), name="detectors"),
+    path("alerts/", views.AlertsView.as_view(), name="alerts"),
+    path("results/", views.ResultsView.as_view(), name="results"),
+    path("replay/", views.ReplayView.as_view(), name="replay"),
+    path("replay/start/", views.ReplayStartView.as_view(), name="replay-start"),
+    path("replay/stop/", views.ReplayStopView.as_view(), name="replay-stop"),
+]

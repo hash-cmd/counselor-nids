@@ -54,6 +54,11 @@ def decode_frame(raw: bytes | str) -> pd.DataFrame:
     return pd.read_json(io.StringIO(text), orient="split", dtype=False, convert_dates=False)
 
 
+def text(value) -> str:
+    """Redis returns bytes unless the client uses decode_responses=True."""
+    return value.decode() if isinstance(value, bytes) else value
+
+
 def field(fields: dict, key: str) -> str | None:
     value = fields.get(key.encode(), fields.get(key))
     return value.decode() if isinstance(value, bytes) else value
