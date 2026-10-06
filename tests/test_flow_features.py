@@ -76,3 +76,16 @@ def test_real_2018_file():
     assert (df["label"] != "Label").all()
     assert set(df["label"]) <= {"Benign", "Infilteration"}
     assert np.isfinite(df[FEATURES_2017].to_numpy()).all()
+
+
+def test_live_connection_columns_use_local_time():
+    from datetime import datetime
+
+    from nids.service.live import connection_columns
+
+    flows = pd.DataFrame({"timestamp": ["2026-03-01 12:00:05"], "flow_duration": [2.5], "dst_port": [80]})
+    out = connection_columns(flows)
+    expected = datetime(2026, 3, 1, 12, 0, 5).timestamp()  # naive datetime = local time
+    assert out.loc[0, "flow_start"] == expected
+    assert out.loc[0, "flow_end"] == expected + 2.5
+    assert out.loc[0, "conn_dst_port"] == 80

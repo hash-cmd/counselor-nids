@@ -17,12 +17,13 @@ import subprocess
 import sys
 import tempfile
 import time
+from datetime import datetime
 
 import pandas as pd
 import redis
 
 from ..data.flow_features import python_flows_to_2017
-from . import extractor
+from . import extractor, flowindex
 
 
 def _numeric(df: pd.DataFrame) -> pd.DataFrame:
@@ -32,6 +33,20 @@ def _numeric(df: pd.DataFrame) -> pd.DataFrame:
         if converted.notna().all():
             df[column] = converted
     return df
+
+
+def connection_columns(flows: pd.DataFrame) -> pd.DataFrame:
+    """Keep each flow's connection and time window (Unix seconds) next to its features,
+    so Snort alerts can be linked to it."""
+    # cicflowmeter writes local time to the second; datetime.timestamp() reads a naive
+    # time as local, daylight saving included
+    start = pd.Series([datetime.strptime(t, "%Y-%m-%d %H:%M:%S").timestamp() for t in flows["timestamp"]],
+                      index=flows.index)
+    return flows.assign(
+        flow_start=start,
+        flow_end=start + flows["flow_duration"].astype(float),  # seconds, before unit conversion
+        conn_dst_port=flows["dst_port"],
+    )
 
 
 def _follow_csv(path: str, process: subprocess.Popen, poll: float = 0.5):
@@ -69,8 +84,9 @@ def capture(r: redis.Redis, interface_or_pcap: str, source: str, batch_size: int
     sent, next_id, pending = 0, 0, []
     try:
         for flows in _follow_csv(out, process):
-            flows = python_flows_to_2017(flows)
+            flows = python_flows_to_2017(connection_columns(flows))
             flows["record_id"] = range(next_id, next_id + len(flows))
+            flowindex.index_flows(r, flows.rename(columns={"conn_dst_port": "dst_port"}))
             next_id += len(flows)
             pending.append(flows)
             if sum(map(len, pending)) >= batch_size or process.poll() is not None:

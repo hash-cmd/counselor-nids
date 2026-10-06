@@ -15,6 +15,7 @@ export function ReplayControls({ status }: { status: ReplayStatus }) {
   const [replay, setReplay] = useState("");
   const [rate, setRate] = useState(1000);
   const [crossCheck, setCrossCheck] = useState(true);
+  const [snort, setSnort] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,6 +29,8 @@ export function ReplayControls({ status }: { status: ReplayStatus }) {
   }, []);
 
   const running = status.state === "running";
+  const selected = options?.replays.find((r) => r.name === replay);
+  const isPcap = selected?.kind === "pcap";
 
   async function send(path: string, body?: object) {
     setBusy(true);
@@ -57,11 +60,12 @@ export function ReplayControls({ status }: { status: ReplayStatus }) {
           >
             {options?.replays.map((r) => (
               <option key={r.name} value={r.name}>
-                {r.name} ({r.size_mb} MB)
+                {r.name} · {r.kind === "pcap" ? "packet capture" : "flow records"} ({r.size_mb} MB)
               </option>
             ))}
           </select>
         </label>
+        {!isPcap && (
         <label className="flex flex-col gap-1 text-xs text-ink-2">
           Flows per second
           <input
@@ -75,6 +79,7 @@ export function ReplayControls({ status }: { status: ReplayStatus }) {
             className="w-28 rounded-md border border-line bg-raised px-2 py-1.5 text-sm text-ink"
           />
         </label>
+        )}
         <label className="flex items-center gap-2 pb-1.5 text-sm text-ink">
           <input
             type="checkbox"
@@ -85,13 +90,25 @@ export function ReplayControls({ status }: { status: ReplayStatus }) {
           />
           Cross-check normal verdicts
         </label>
+        {isPcap && (
+          <label className="flex items-center gap-2 pb-1.5 text-sm text-ink" title={options?.snort ? undefined : "Snort is not installed on the API host"}>
+            <input
+              type="checkbox"
+              checked={snort && !!options?.snort}
+              onChange={(e) => setSnort(e.target.checked)}
+              disabled={running || !options?.snort}
+              className="size-4 accent-[var(--accent)]"
+            />
+            Run Snort on the same traffic
+          </label>
+        )}
         <div className="ml-auto flex items-center gap-3">
           <StatusBadge
             tone={TONES[status.state]}
             label={
               status.state === "idle"
                 ? "Idle"
-                : `${status.state[0].toUpperCase()}${status.state.slice(1)} · ${status.replay} · ${clock(status.started_at)}`
+                : `${status.state[0].toUpperCase()}${status.state.slice(1)} · ${status.replay}${status.snort ? " + Snort" : ""} · ${clock(status.started_at)}`
             }
           />
           {running ? (
@@ -106,7 +123,7 @@ export function ReplayControls({ status }: { status: ReplayStatus }) {
           ) : (
             <button
               type="button"
-              onClick={() => send("/replay/start/", { replay, rate, cross_check: crossCheck })}
+              onClick={() => send("/replay/start/", { replay, rate, cross_check: crossCheck, snort: isPcap && snort && !!options?.snort })}
               disabled={busy || !replay || !!noModels}
               className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
             >
@@ -120,7 +137,7 @@ export function ReplayControls({ status }: { status: ReplayStatus }) {
           {error ??
             (noModels
               ? "No trained detectors found. Run `nids train scenario2` on the server first."
-              : "No replay files found in data/replay/. Run `nids train scenario2` on the server first.")}
+              : "No replay files found in data/replay/ or data/pcap/. Run `nids train scenario2` on the server first.")}
         </p>
       )}
       {status.state === "failed" && status.errors && (

@@ -5,6 +5,7 @@ import { DecisionsChart } from "@/components/decisions-chart";
 import { DetectorTiles } from "@/components/detector-tiles";
 import { RateChart } from "@/components/rate-chart";
 import { ReplayControls } from "@/components/replay-controls";
+import { SnortPanel } from "@/components/snort-panel";
 import { StatusBadge } from "@/components/status-badge";
 import { useAuth } from "@/lib/auth";
 import { seriesColor } from "@/lib/format";
@@ -50,6 +51,7 @@ export default function LivePage() {
       </div>
       <DecisionsChart detectors={live.detectors} />
       <AlertsTable alerts={live.alerts} detectors={detectors} />
+      <SnortPanel summary={live.snort} alerts={live.snortAlerts} />
     </>
   );
 }

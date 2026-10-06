@@ -36,11 +36,22 @@ class ResultsView(APIView):
                          "self_learning": results.self_learning()})
 
 
+class SnortView(APIView):
+    """Snort alerts linked to flows and ML verdicts, and how the two compare."""
+
+    def get(self, request):
+        limit = min(int(request.query_params.get("limit", 50)), 500)
+        r = get_redis()
+        return Response({"summary": monitor.read_snort(r),
+                         "alerts": monitor.read_snort_alerts(r, limit, request.query_params.get("after"))})
+
+
 class ReplayStartSerializer(serializers.Serializer):
     replay = serializers.CharField()
     rate = serializers.FloatField(min_value=10, max_value=50_000, default=1000)
     cross_check = serializers.BooleanField(default=True)
     min_accuracy = serializers.FloatField(min_value=0, max_value=1, default=0.9)
+    snort = serializers.BooleanField(default=True)  # pcap replays only
 
 
 class ReplayView(APIView):

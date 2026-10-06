@@ -44,6 +44,46 @@ def read_alerts(r: redis.Redis, count: int = 50, after: str | None = None) -> li
     return alerts
 
 
+def read_snort(r: redis.Redis) -> dict | None:
+    """Snort alert counts and how they compare with the ML, or None if Snort is not running."""
+    from . import snort
+
+    stats = {bus.text(k): int(v) for k, v in r.hgetall(snort.STATS).items()}
+    if not stats:
+        return None
+    snort_flows = r.scard(snort.FLAGGED_SNORT)
+    ml_flows = r.scard(snort.FLAGGED_ML)
+    both = len(r.sinter(snort.FLAGGED_SNORT, snort.FLAGGED_ML)) if snort_flows and ml_flows else 0
+    return {
+        "alerts": stats.get("alerts", 0),
+        "confirmed": stats.get("confirmed", 0),
+        "disputed": stats.get("disputed", 0),
+        "no_verdict": stats.get("no_verdict", 0),
+        "unmatched": stats.get("unmatched", 0),
+        "pending": stats.get("alerts", 0) - sum(stats.get(k, 0) for k in
+                                                 ("confirmed", "disputed", "no_verdict", "unmatched")),
+        "flows": {"both": both, "snort_only": snort_flows - both, "ml_only": ml_flows - both},
+    }
+
+
+def read_snort_alerts(r: redis.Redis, count: int = 50, after: str | None = None) -> list[dict]:
+    """Newest correlated Snort alerts first."""
+    from . import snort
+
+    alerts = []
+    for entry_id, fields in r.xrevrange(snort.ALERTS, "+", f"({after}" if after else "-", count=count):
+        a: dict = {bus.text(k): bus.text(v) for k, v in fields.items()}
+        a["id"] = bus.text(entry_id)
+        for key in ("seconds", "gid", "sid", "priority", "flows", "record_id"):
+            a[key] = int(a[key])
+        for key in ("ml_share", "ml_confidence"):
+            a[key] = float(a[key]) if a[key] else None
+        a["ml_verdict"] = a["ml_verdict"] or None
+        a["ml_detector"] = a["ml_detector"] or None
+        alerts.append(a)
+    return alerts
+
+
 def snapshot(r: redis.Redis) -> pd.DataFrame:
     rows = {}
     for name, s in read_stats(r).items():
@@ -61,6 +101,8 @@ def run(r: redis.Redis, interval: float = 2.0, once: bool = False) -> None:
         table = snapshot(r)
         print(time.strftime("%H:%M:%S"), "\n" + (table.to_string() if len(table) else "no detectors yet"),
               flush=True)
+        if (snort_stats := read_snort(r)) is not None:
+            print("snort:", snort_stats, flush=True)
         if once:
             return
         time.sleep(interval)

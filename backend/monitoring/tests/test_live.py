@@ -50,6 +50,24 @@ class LiveFeedTests(FakeRedisMixin, TransactionTestCase):
         self.assertEqual([a["record_id"] for a in message["alerts"]], [8])
         await ws.disconnect()
 
+    async def test_streams_snort_summary_and_alerts(self):
+        from nids.service import snort
+
+        self.redis.hset(snort.STATS, "alerts", 1)
+        self.redis.xadd(snort.ALERTS, {
+            "seconds": 100, "msg": "NIDS possible SYN flood", "gid": 1, "sid": 9000010, "priority": 2,
+            "class": "attempted-dos", "proto": "TCP", "src": "172.16.0.1:1234", "dst": "10.0.0.80:80",
+            "flows": 1, "record_id": 5, "agreement": "confirmed", "ml_verdict": "attack",
+            "ml_share": 1.0, "ml_confidence": 0.99, "ml_detector": "detector1"})
+        ws = self.communicator(str(AccessToken.for_user(self.user)))
+        await ws.connect()
+        stats = await ws.receive_json_from(timeout=2)
+        self.assertEqual(stats["snort"]["alerts"], 1)
+        snort_alerts = await ws.receive_json_from(timeout=2)
+        self.assertEqual(snort_alerts["type"], "snort_alerts")
+        self.assertEqual(snort_alerts["alerts"][0]["agreement"], "confirmed")
+        await ws.disconnect()
+
     async def test_new_replay_sends_reset(self):
         ws = self.communicator(str(AccessToken.for_user(self.user)))
         await ws.connect()

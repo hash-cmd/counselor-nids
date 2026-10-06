@@ -21,6 +21,7 @@ UNKNOWN = f"{PREFIX}:unknown"
 SUBSCRIPTIONS = f"{PREFIX}:subscriptions"
 ENDED = f"{PREFIX}:ended"
 ALERTS = f"{PREFIX}:alerts"
+SNORT_ACTIVE = f"{PREFIX}:snort:active"  # set while the Snort correlator still needs advice
 
 BATCH, END = "batch", "end"
 
@@ -41,8 +42,14 @@ def stats(name: str) -> str:
     return f"{PREFIX}:stats:{name}"
 
 
+# redis-py 8 gives connections a 5 s socket timeout by default, which races any
+# blocking read (BLPOP) that waits 5 s or more. Every blocking wait here is shorter.
+SOCKET_TIMEOUT = 30
+
+
 def connect(url: str | None = None) -> redis.Redis:
-    return redis.Redis.from_url(url or os.environ.get("NIDS_REDIS_URL", "redis://localhost:6379/0"))
+    return redis.Redis.from_url(url or os.environ.get("NIDS_REDIS_URL", "redis://localhost:6379/0"),
+                                socket_timeout=SOCKET_TIMEOUT)
 
 
 def encode_frame(df: pd.DataFrame) -> str:

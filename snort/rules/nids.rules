@@ -1,0 +1,15 @@
+# Snort 3 rules used alongside the ML detectors (sid 9000000+).
+# Port scans are reported by the port_scan inspector (gid 122), not by rules here.
+
+alert http any any -> any any ( msg:"NIDS SQL injection attempt (UNION SELECT)"; http_uri; content:"union",nocase; content:"select",nocase,distance 0; classtype:web-application-attack; sid:9000001; rev:1; )
+alert http any any -> any any ( msg:"NIDS SQL injection attempt (OR 1=1)"; http_uri; content:"' or 1=1",nocase; classtype:web-application-attack; sid:9000002; rev:1; )
+alert http any any -> any any ( msg:"NIDS cross-site scripting attempt (<script>)"; http_uri; content:"<script",nocase; classtype:web-application-attack; sid:9000003; rev:1; )
+alert http any any -> any any ( msg:"NIDS path traversal attempt (/etc/passwd)"; http_uri; content:"/etc/passwd"; classtype:web-application-attack; sid:9000004; rev:1; )
+
+# SYN floods target a service port; limiting to web ports keeps port-scan probes
+# (also SYN bursts to one host) from being reported as a flood.
+alert tcp any any -> any [80,443,8080] ( msg:"NIDS possible SYN flood"; flags:S; detection_filter:track by_dst, count 200, seconds 2; classtype:attempted-dos; sid:9000010; rev:1; )
+alert http any any -> any any ( msg:"NIDS HTTP request flood"; http_method; content:"GET"; detection_filter:track by_dst, count 300, seconds 2; classtype:attempted-dos; sid:9000011; rev:1; )
+
+alert tcp any any -> any 22 ( msg:"NIDS SSH brute force (many connections)"; flags:S; detection_filter:track by_src, count 20, seconds 10; classtype:attempted-admin; sid:9000020; rev:1; )
+alert tcp any any -> any 21 ( msg:"NIDS FTP brute force (many connections)"; flags:S; detection_filter:track by_src, count 20, seconds 10; classtype:attempted-admin; sid:9000021; rev:1; )

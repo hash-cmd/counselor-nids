@@ -41,7 +41,10 @@ class RemoteCounselor:
             "window": window,
             "reply_to": bus.advice_reply(request_id),
         }))
-        reply = self.r.blpop(bus.advice_reply(request_id), timeout=self.timeout)
+        try:
+            reply = self.r.blpop(bus.advice_reply(request_id), timeout=self.timeout)
+        except redis.TimeoutError:
+            reply = None
         if reply is None:
             return none
         answer = json.loads(reply[1])
@@ -92,6 +95,10 @@ def record(r: redis.Redis, name: str, frame: pd.DataFrame, final: pd.DataFrame) 
     pipe = r.pipeline()
     for key, value in counters.items():
         pipe.hincrby(bus.stats(name), key, value)
+    flagged_ids = frame.loc[final.index[attack], "record_id"].astype(int).tolist()
+    if flagged_ids:  # for comparing with Snort: flows the ML flagged
+        pipe.sadd(f"{bus.PREFIX}:flagged:ml", *flagged_ids)
+        pipe.expire(f"{bus.PREFIX}:flagged:ml", 3600)
     flagged = final[attack].join(frame[["record_id"] + (["label"] if "label" in frame else [])])
     for row in flagged.itertuples():
         pipe.xadd(bus.ALERTS, {
@@ -134,8 +141,10 @@ def run(
                     pending = sum(len(y) for _, y in detector.new_signatures)
                     if retrain_every and pending >= retrain_every:
                         r.hincrby(bus.stats(detector.name), "retrained_on", detector.retrain())
-            # Keep answering advice until every detector has finished the stream.
-            if exit_on_end and state.ended and r.scard(bus.ENDED) >= r.hlen(bus.SUBSCRIPTIONS):
+            # Keep answering advice until every detector has finished the stream
+            # and the Snort correlator (if running) no longer needs verdicts.
+            if (exit_on_end and state.ended and r.scard(bus.ENDED) >= r.hlen(bus.SUBSCRIPTIONS)
+                    and not r.exists(bus.SNORT_ACTIVE)):
                 return
     finally:
         state.stop.set()
@@ -150,4 +159,6 @@ def process(r, detector, frame, state, min_accuracy, window, cross_check) -> pd.
                                cross_check_normal=cross_check)
     final = network.resolve(detector, frame, results)
     record(r, detector.name, frame, final)
+    # how far this detector has analysed, so the Snort correlator knows when to ask
+    r.set(f"{bus.PREFIX}:watermark:{detector.name}", state.watermark)
     return final

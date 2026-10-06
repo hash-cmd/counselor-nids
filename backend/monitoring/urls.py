@@ -10,6 +10,7 @@ urlpatterns = [
     path("detectors/", views.DetectorsView.as_view(), name="detectors"),
     path("alerts/", views.AlertsView.as_view(), name="alerts"),
     path("results/", views.ResultsView.as_view(), name="results"),
+    path("snort/", views.SnortView.as_view(), name="snort"),
     path("replay/", views.ReplayView.as_view(), name="replay"),
     path("replay/start/", views.ReplayStartView.as_view(), name="replay-start"),
     path("replay/stop/", views.ReplayStopView.as_view(), name="replay-stop"),

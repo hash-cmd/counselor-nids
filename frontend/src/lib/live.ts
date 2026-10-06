@@ -3,7 +3,7 @@
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { refreshAccess, tokens, WS_URL } from "./api";
-import type { Alert, DetectorStats, ReplayStatus } from "./types";
+import type { Alert, DetectorStats, ReplayStatus, SnortAlert, SnortSummary } from "./types";
 
 const MAX_ALERTS = 200;
 const MAX_POINTS = 120; // ~2 minutes at one stats message per second
@@ -15,6 +15,9 @@ export type LiveState = {
   detectors: Record<string, DetectorStats>;
   replay: ReplayStatus;
   alerts: Alert[];
+  /** Snort running next to the ML: summary (null when Snort is not running) and alerts. */
+  snort: SnortSummary | null;
+  snortAlerts: SnortAlert[];
   /** Attacks flagged per second, per detector, one point per stats message. */
   flaggedRate: RatePoint[];
   /** Flows analysed per second, per detector. */
@@ -26,6 +29,8 @@ const initial: LiveState = {
   detectors: {},
   replay: { state: "idle" },
   alerts: [],
+  snort: null,
+  snortAlerts: [],
   flaggedRate: [],
   sampleRate: [],
 };
@@ -91,7 +96,7 @@ export function useLiveFeed(onSessionEnd: () => void): LiveState {
         const message = JSON.parse(event.data);
         if (message.type === "reset") {
           previous = null;
-          setState((s) => ({ ...s, alerts: [], flaggedRate: [], sampleRate: [] }));
+          setState((s) => ({ ...s, alerts: [], snort: null, snortAlerts: [], flaggedRate: [], sampleRate: [] }));
         } else if (message.type === "stats") {
           const flagged = rate(previous, message.time, message.detectors, "flagged");
           const samples = rate(previous, message.time, message.detectors, "samples");
@@ -99,10 +104,17 @@ export function useLiveFeed(onSessionEnd: () => void): LiveState {
           setState((s) => ({
             ...s,
             detectors: message.detectors,
+            snort: message.snort ?? null,
             replay: message.replay,
             flaggedRate: flagged ? [...s.flaggedRate, flagged].slice(-MAX_POINTS) : s.flaggedRate,
             sampleRate: samples ? [...s.sampleRate, samples].slice(-MAX_POINTS) : s.sampleRate,
           }));
+        } else if (message.type === "snort_alerts") {
+          setState((s) => {
+            const known = new Set(s.snortAlerts.map((a) => a.id));
+            const fresh = (message.alerts as SnortAlert[]).filter((a) => !known.has(a.id));
+            return { ...s, snortAlerts: [...fresh, ...s.snortAlerts].slice(0, MAX_ALERTS) };
+          });
         } else if (message.type === "alerts") {
           setState((s) => {
             const known = new Set(s.alerts.map((a) => a.id));

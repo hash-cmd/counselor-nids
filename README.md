@@ -169,6 +169,60 @@ Backend settings come from environment variables (or `backend/.env`): `DJANGO_SE
 `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `NIDS_REDIS_URL`, `NIDS_ROOT`,
 `DJANGO_DB_PATH`. Tests: `cd backend && python manage.py test monitoring`.
 
+## Snort alongside the ML
+
+Snort and the ML detectors analyse the **same traffic** — a packet capture or a live
+interface. Every Snort alert is linked to the flow it belongs to, and the ML detectors give
+their verdict on that flow through the same advice request they use with each other:
+
+| Agreement | Meaning |
+|---|---|
+| **Confirmed** | Snort flagged it and the ML says attack |
+| **Disputed** | Snort flagged it, the ML says normal (a possible Snort false alarm, or an attack the ML was never trained on) |
+| **ML only** | the ML flagged a flow Snort had no alert for |
+
+```
+packets ──> Snort (snort/nids.lua, snort/rules/nids.rules) ──> alert_json ─┐
+        └─> flow extractor ──> ML detectors ──> verdicts ──────────────────┴─> correlator ──> Redis ──> dashboard
+```
+
+- An alert is linked by connection (both IPs, ports, protocol, either direction) and time:
+  the alert must fall inside the flow's start-to-end window (`src/nids/service/flowindex.py`).
+- Host-level alerts — a port scan stands for many probe connections — are linked to every
+  flow between the two hosts within ±30 s.
+- Detectors are specialists, so the ML verdict is *attack* if any detector with acceptable
+  accuracy says so (the same reasoning as cross-checking).
+
+```bash
+python experiments/make_attack_pcap.py data/pcap/demo-attacks.pcap   # normal traffic + scan, web attacks, SYN flood, SSH brute force
+nids observe --exit-on-end &
+nids detect models/detector1.joblib --sources live --cross-check --exit-on-end &
+nids detect models/detector2.joblib --sources live --cross-check --exit-on-end &
+nids snort --pcap data/pcap/demo-attacks.pcap &
+nids extract --live data/pcap/demo-attacks.pcap --source live --wait-for 2
+```
+
+Or pick the capture in the dashboard and tick **Run Snort on the same traffic**. Live:
+`sudo nids snort --interface eth0` next to `sudo nids extract --live eth0 ...`; with an
+existing Snort, `nids snort --follow /var/log/snort/alert_json.txt` (it needs the `seconds`,
+address, port and `proto` fields in `alert_json`).
+
+On the demo capture:
+
+| Traffic | Flows | ML flagged | Snort flagged |
+|---|---|---|---|
+| Normal browsing | 100 | 0 | 0 |
+| SYN flood | 3,000 | 3,000 | 2,805 |
+| Port scan | 1,027 | 0 | all (one host-level alert) |
+| Web attacks (SQLi, XSS, traversal) | 18 | 0 | 18 |
+| SSH brute force | 59 | 0 | 41 |
+
+The ML confirms Snort's flood alerts and catches the first 195 flood flows before Snort's rate
+threshold fires; Snort catches the payload attacks, scan and brute force the models were never
+trained on (they learned CICIDS2017 DoS / DDoS / PortScan flow statistics; the synthetic scan
+differs from CICIDS2017's). Snort is not in the Docker image (Debian has no package), so in
+Docker the dashboard runs pcap replays with the ML only.
+
 ## CSE-CIC-IDS2018
 
 `nids.data.cse_cic_ids2018.load_cse_cic_ids2018` loads the 2018 data with CICIDS2017 column
@@ -199,7 +253,8 @@ names and real timestamps. It is set aside for later work and not used by the ex
 | `src/nids/detector/` | Classifier selection and detection (Algorithms 1 & 2) |
 | `src/nids/counselor/` | Advice exchange between detectors |
 | `src/nids/scenarios.py` | Scenario setups with signature / validation / test splits |
-| `src/nids/service/` | Distributed services: extractor, observer, detector, monitor, live capture |
+| `src/nids/service/` | Distributed services: extractor, observer, detector, monitor, live capture, Snort correlator |
+| `snort/` | Snort 3 config and rules used next to the ML |
 | `src/nids/cli.py` | `nids` command |
 | `experiments/` | `tune.py` (validation), `run.py` (test), `self_learning.py` |
 | `notebooks/` | `01` explores the datasets, `02` plots the results — no logic of their own |

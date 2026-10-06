@@ -1,8 +1,9 @@
 """Live feed for the dashboard over a WebSocket.
 
 Every ``INTERVAL`` seconds the client receives:
-    {"type": "stats",  "detectors": {...}, "replay": {...}, "time": <unix s>}
+    {"type": "stats",  "detectors": {...}, "snort": {...} | null, "replay": {...}, "time": <unix s>}
     {"type": "alerts", "alerts": [...newest first, at most MAX_ALERTS...]}   (only when new)
+    {"type": "snort_alerts", "alerts": [...]}                               (only when new)
 When a new replay starts it first receives {"type": "reset"}.
 """
 
@@ -35,17 +36,23 @@ class LiveConsumer(AsyncJsonWebsocketConsumer):
     async def stream(self):
         r = get_redis()
         unread = object()  # the run id may legitimately be None (no replay yet)
-        run_id, last_alert = unread, None
+        run_id, last_alert, last_snort = unread, None, None
         while True:
             current_run = await asyncio.to_thread(r.get, replay.RUN_KEY)
             if current_run != run_id:
                 if run_id is not unread:
                     await self.send_json({"type": "reset"})
-                run_id, last_alert = current_run, None
+                run_id, last_alert, last_snort = current_run, None, None
 
             stats = await asyncio.to_thread(monitor.read_stats, r)
-            await self.send_json({"type": "stats", "detectors": stats,
+            snort = await asyncio.to_thread(monitor.read_snort, r)
+            await self.send_json({"type": "stats", "detectors": stats, "snort": snort,
                                   "replay": replay.manager.status(), "time": time.time()})
+
+            snort_alerts = await asyncio.to_thread(monitor.read_snort_alerts, r, MAX_ALERTS, last_snort)
+            if snort_alerts:
+                last_snort = snort_alerts[0]["id"]
+                await self.send_json({"type": "snort_alerts", "alerts": snort_alerts})
 
             alerts = await asyncio.to_thread(monitor.read_alerts, r, MAX_ALERTS, last_alert)
             if alerts:

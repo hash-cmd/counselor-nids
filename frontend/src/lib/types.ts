@@ -16,6 +16,8 @@ export type ReplayStatus =
       id: string;
       state: "running" | "finished" | "failed" | "stopped";
       replay: string;
+      kind: "flows" | "pcap";
+      snort: boolean;
       rate: number;
       cross_check: boolean;
       min_accuracy: number;
@@ -36,9 +38,40 @@ export type Alert = {
 };
 
 export type ReplayOptions = {
-  replays: { name: string; size_mb: number }[];
+  replays: { name: string; kind: "flows" | "pcap"; size_mb: number }[];
   models: string[];
+  snort: boolean;
   status: ReplayStatus;
+};
+
+export type SnortSummary = {
+  alerts: number;
+  confirmed: number;
+  disputed: number;
+  no_verdict: number;
+  unmatched: number;
+  pending: number;
+  flows: { both: number; snort_only: number; ml_only: number };
+};
+
+export type SnortAlert = {
+  id: string;
+  seconds: number;
+  msg: string;
+  gid: number;
+  sid: number;
+  priority: number;
+  class: string;
+  proto: string;
+  src: string;
+  dst: string;
+  flows: number;
+  record_id: number;
+  agreement: "confirmed" | "disputed" | "no_verdict" | "unmatched";
+  ml_verdict: "attack" | "normal" | null;
+  ml_share: number | null;
+  ml_confidence: number | null;
+  ml_detector: string | null;
 };
 
 export type ComparisonRow = {

@@ -9,6 +9,7 @@ __pycache__/
 data/raw/
 data/processed/
 data/replay/
+data/pcap/
 
 # Trained models and experiment outputs
 models/

@@ -5,6 +5,7 @@
     nids detect models/detector1.joblib --sources cicids2017 --cross-check
     nids extract data/replay/scenario2.csv --source cicids2017 --wait-for 2
     nids monitor
+    nids snort --pcap capture.pcap           # Snort + link its alerts to flows and ML verdicts
 
 All services talk to Redis at $NIDS_REDIS_URL (default redis://localhost:6379/0).
 """
@@ -72,6 +73,16 @@ def monitor(args) -> None:
     mon.run(bus.connect(args.redis), args.interval, args.once)
 
 
+def snort(args) -> None:
+    from .service import bus
+    from .service import snort as bridge
+
+    stats = bridge.run(bus.connect(args.redis), target=args.pcap or args.interface, follow=args.follow,
+                       min_accuracy=args.min_accuracy, wait=args.wait,
+                       config=args.config, include_path=args.include_path)
+    print("snort:", stats)
+
+
 def reset(args) -> None:
     from .service import bus
 
@@ -122,6 +133,17 @@ def main(argv=None) -> None:
     p.add_argument("--interval", type=float, default=2.0)
     p.add_argument("--once", action="store_true")
     p.set_defaults(func=monitor)
+
+    p = sub.add_parser("snort", help="run Snort next to the detectors and link its alerts to flows")
+    target = p.add_mutually_exclusive_group(required=True)
+    target.add_argument("--pcap", help="run Snort on this capture (same file as `extract --live`)")
+    target.add_argument("--interface", help="run Snort live on this interface (needs root)")
+    target.add_argument("--follow", type=Path, help="follow an existing Snort alert_json file instead")
+    p.add_argument("--min-accuracy", type=float, default=0.9, help="accept ML verdicts at least this accurate")
+    p.add_argument("--wait", type=float, default=120.0, help="seconds an alert may wait for its flow")
+    p.add_argument("--config", type=Path, default=PROJECT_ROOT / "snort" / "nids.lua")
+    p.add_argument("--include-path", default="/etc/snort", help="where snort_defaults.lua lives")
+    p.set_defaults(func=snort)
 
     p = sub.add_parser("reset", help="delete all nids:* keys in Redis")
     p.set_defaults(func=reset)

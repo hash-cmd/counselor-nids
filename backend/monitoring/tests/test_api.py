@@ -125,7 +125,7 @@ class ReplayTests(LoggedInTestCase):
     def test_lists_replays_and_models(self):
         (self.root / "models" / "detector1.joblib").write_bytes(b"")
         body = self.client.get("/api/replay/").json()
-        self.assertEqual(body["replays"], [{"name": "demo.csv", "size_mb": 0.0}])
+        self.assertEqual(body["replays"], [{"name": "demo.csv", "kind": "flows", "size_mb": 0.0}])
         self.assertEqual(body["models"], ["detector1"])
         self.assertEqual(body["status"], {"state": "idle"})
 
@@ -145,10 +145,7 @@ class ReplayTests(LoggedInTestCase):
     def test_stop_without_replay(self):
         self.assertEqual(self.client.post("/api/replay/stop/").status_code, 409)
 
-    def test_start_launches_services_and_stop_terminates_them(self):
-        (self.root / "models" / "detector1.joblib").write_bytes(b"")
-        started = []
-
+    def fake_popen(self, started):
         class FakeProcess:
             def __init__(self, command, **kwargs):
                 self.command, self.returncode = command, None
@@ -163,7 +160,13 @@ class ReplayTests(LoggedInTestCase):
             def wait(self, timeout=None):
                 return self.returncode
 
-        with mock.patch("monitoring.replay.Popen", FakeProcess):
+        return FakeProcess
+
+    def test_start_launches_services_and_stop_terminates_them(self):
+        (self.root / "models" / "detector1.joblib").write_bytes(b"")
+        started = []
+
+        with mock.patch("monitoring.replay.Popen", self.fake_popen(started)):
             response = self.client.post("/api/replay/start/",
                                         {"replay": "demo.csv", "rate": 500, "cross_check": True},
                                         format="json")
@@ -182,3 +185,53 @@ class ReplayTests(LoggedInTestCase):
             stopped = self.client.post("/api/replay/stop/").json()
             self.assertEqual(stopped["state"], "stopped")
             self.assertTrue(all(p.returncode == -15 for p in started))
+
+    def test_pcap_replay_runs_live_extractor_and_snort(self):
+        (self.root / "models" / "detector1.joblib").write_bytes(b"")
+        (self.root / "data" / "pcap").mkdir(parents=True)
+        (self.root / "data" / "pcap" / "attack.pcap").write_bytes(b"")
+        started = []
+        with mock.patch("monitoring.replay.Popen", self.fake_popen(started)), \
+                mock.patch("monitoring.replay.snort_available", return_value=True):
+            listed = self.client.get("/api/replay/").json()
+            self.assertIn({"name": "attack.pcap", "kind": "pcap", "size_mb": 0.0}, listed["replays"])
+            self.assertTrue(listed["snort"])
+
+            body = self.client.post("/api/replay/start/", {"replay": "attack.pcap"}, format="json").json()
+            self.assertEqual((body["kind"], body["snort"]), ("pcap", True))
+            commands = {p.command[3]: p.command for p in started}
+            self.assertEqual(commands["extract"][4:6], ["--live", str(self.root / "data" / "pcap" / "attack.pcap")])
+            self.assertEqual(commands["snort"][4:6], ["--pcap", str(self.root / "data" / "pcap" / "attack.pcap")])
+            self.assertTrue(self.redis.exists(bus.SNORT_ACTIVE))  # detectors wait for Snort
+            self.client.post("/api/replay/stop/")
+            self.assertFalse(self.redis.exists(bus.SNORT_ACTIVE))
+
+    def test_pcap_replay_without_snort_installed(self):
+        (self.root / "models" / "detector1.joblib").write_bytes(b"")
+        (self.root / "data" / "pcap").mkdir(parents=True)
+        (self.root / "data" / "pcap" / "attack.pcap").write_bytes(b"")
+        with mock.patch("monitoring.replay.snort_available", return_value=False):
+            response = self.client.post("/api/replay/start/", {"replay": "attack.pcap"}, format="json")
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("Snort is not installed", response.json()["detail"])
+
+
+class SnortTests(LoggedInTestCase):
+    def test_snort_summary_and_alerts(self):
+        from nids.service import snort
+
+        self.assertEqual(self.client.get("/api/snort/").json(), {"summary": None, "alerts": []})
+        self.redis.hset(snort.STATS, mapping={"alerts": 2, "confirmed": 1, "disputed": 1})
+        self.redis.sadd(snort.FLAGGED_SNORT, 1, 2)
+        self.redis.sadd(snort.FLAGGED_ML, 2, 3)
+        self.redis.xadd(snort.ALERTS, {
+            "seconds": 100, "msg": "NIDS SQL injection", "gid": 1, "sid": 9000001, "priority": 1,
+            "class": "web-application-attack", "proto": "TCP", "src": "10.0.0.66:41000",
+            "dst": "10.0.0.80:80", "flows": 1, "record_id": 1, "agreement": "disputed",
+            "ml_verdict": "normal", "ml_share": 0.0, "ml_confidence": 0.99, "ml_detector": "detector1"})
+
+        body = self.client.get("/api/snort/").json()
+        self.assertEqual(body["summary"]["flows"], {"both": 1, "snort_only": 1, "ml_only": 1})
+        self.assertEqual(body["summary"]["confirmed"], 1)
+        alert = body["alerts"][0]
+        self.assertEqual((alert["agreement"], alert["ml_verdict"], alert["sid"]), ("disputed", "normal", 9000001))
