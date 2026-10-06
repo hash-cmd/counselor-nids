@@ -29,7 +29,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "channels",
-    "monitoring",
+    "api",
 ]
 
 MIDDLEWARE = [
@@ -80,7 +80,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": ["monitoring.authentication.CookieJWTAuthentication"],
+    "DEFAULT_AUTHENTICATION_CLASSES": ["api.auth.rest.CookieJWTAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_THROTTLE_RATES": {"login": config("LOGIN_RATE", default="10/min")},
 }

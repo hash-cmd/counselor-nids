@@ -9,11 +9,11 @@ from dataclasses import dataclass
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from .data import cicids2017 as cic
-from .data import nsl_kdd as kdd
+from .datasets import cicids2017 as cic
+from .datasets import nsl_kdd as kdd
 from .detector.classifiers import SCENARIO1, SCENARIO2
 from .detector.detector import Detector
-from .experiments import build_detector
+from .detector.training import build_detector
 
 
 @dataclass

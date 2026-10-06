@@ -1,10 +1,10 @@
 "use client";
 
-import { DecisionsChart } from "@/components/decisions-chart";
-import { DetectorTiles } from "@/components/detector-tiles";
-import { RateChart } from "@/components/rate-chart";
+import { DecisionsChart } from "@/components/charts/decisions-chart";
+import { DetectorTiles } from "@/components/panels/detector-tiles";
+import { RateChart } from "@/components/charts/rate-chart";
 import { seriesColor } from "@/lib/format";
-import { useLive } from "@/lib/live";
+import { useLive } from "@/lib/live-feed";
 
 export default function DetectorsPage() {
   const live = useLive();

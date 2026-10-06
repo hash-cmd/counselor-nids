@@ -16,7 +16,7 @@ seen, so without this such attacks are confidently missed.
 import numpy as np
 import pandas as pd
 
-from ..detector.detector import Advice, Detector
+from ..detector.detector import Detector
 
 
 class CounselorNetwork:
@@ -33,14 +33,8 @@ class CounselorNetwork:
         self.window = window
         self.cross_check_normal = cross_check_normal
 
-    def request_advice(self, requester: Detector, timestamp: float) -> Advice | None:
-        """Ask every other detector; return the most accurate acceptable advice."""
-        answers = (d.advise(timestamp, self.window) for d in self.detectors if d is not requester)
-        acceptable = [a for a in answers if a is not None and a.accuracy >= self.min_accuracy]
-        return max(acceptable, key=lambda a: a.accuracy, default=None)
-
     def _best_advice(self, requester: Detector, timestamps: np.ndarray):
-        """Vectorised ``request_advice``: (found, prediction, counselor name) arrays."""
+        """Best acceptable advice per timestamp: (found, prediction, counselor name) arrays."""
         counselors = [d for d in self.detectors if d is not requester]
         n = len(timestamps)
         best_confidence = np.full(n, -np.inf)

@@ -10,7 +10,9 @@
 # Models are trained inside the image so they match its scikit-learn version.
 
 x-nids: &nids
-  build: .
+  build:
+    context: .
+    dockerfile: docker/api.Dockerfile
   image: counselor-nids
   environment:
     NIDS_REDIS_URL: redis://redis:6379/0
@@ -53,6 +55,7 @@ services:
   web:
     build:
       context: ./frontend
+      dockerfile: ../docker/web.Dockerfile
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8000
     ports:

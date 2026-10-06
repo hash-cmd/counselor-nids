@@ -15,7 +15,7 @@ from pathlib import Path
 
 import joblib
 
-from .data.paths import PROJECT_ROOT
+from .datasets.paths import PROJECT_ROOT
 
 
 def train(args) -> None:
@@ -36,14 +36,14 @@ def train(args) -> None:
 
 
 def extract(args) -> None:
-    from .service import bus, extractor
+    from .services import bus, extractor
 
     r = bus.connect(args.redis)
     if args.wait_for:
         extractor.wait_for_subscribers(r, args.wait_for)
     if args.live:
-        from .service import live
-        sent = live.capture(r, args.live, args.source, args.batch_size)
+        from .services import live_capture
+        sent = live_capture.capture(r, args.live, args.source, args.batch_size)
     else:
         sent = extractor.replay(r, args.csv, args.source, args.batch_size, args.rate,
                                 args.timestamp_column, args.max_rows)
@@ -51,13 +51,13 @@ def extract(args) -> None:
 
 
 def observe(args) -> None:
-    from .service import bus, observer
+    from .services import bus, observer
 
     print("observer forwarded", observer.run(bus.connect(args.redis), exit_on_end=args.exit_on_end))
 
 
 def detect(args) -> None:
-    from .service import bus, detector_service
+    from .services import bus, detector as detector_service
 
     detector = joblib.load(args.model)
     print(f"{detector.name}: subscribed to {args.sources}", flush=True)
@@ -67,15 +67,15 @@ def detect(args) -> None:
 
 
 def monitor(args) -> None:
-    from .service import bus
-    from .service import monitor as mon
+    from .services import bus
+    from .services import monitor as mon
 
     mon.run(bus.connect(args.redis), args.interval, args.once)
 
 
 def snort(args) -> None:
-    from .service import bus
-    from .service import snort as bridge
+    from .services import bus
+    from .services import snort_bridge as bridge
 
     stats = bridge.run(bus.connect(args.redis), target=args.pcap or args.interface, follow=args.follow,
                        min_accuracy=args.min_accuracy, wait=args.wait,
@@ -84,7 +84,7 @@ def snort(args) -> None:
 
 
 def reset(args) -> None:
-    from .service import bus
+    from .services import bus
 
     print("deleted", bus.reset(bus.connect(args.redis)), "keys")
 

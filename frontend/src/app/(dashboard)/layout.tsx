@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { StatusBadge } from "@/components/status-badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useAuth, useRequireAuth } from "@/lib/auth";
-import { LiveProvider, useLive } from "@/lib/live";
+import { LiveProvider, useLive } from "@/lib/live-feed";
 
 const NAV = [
   { href: "/", label: "Overview" },

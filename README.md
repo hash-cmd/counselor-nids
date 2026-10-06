@@ -1,7 +1,7 @@
 # NIDS — Counselors-Based Intrusion Detection
 
 Reproduction of *A Counselors-Based Intrusion Detection Architecture*
-(Quincozes et al., IFIP 2019 — see [documents/](documents/)) in Python with scikit-learn.
+(Quincozes et al., IFIP 2019 — see [docs/paper/](docs/paper/)) in Python with scikit-learn.
 
 Detectors pick the most accurate classifiers per K-Means cluster; when the selected
 classifiers disagree, the detector asks other detectors ("counselors") for advice and
@@ -19,7 +19,7 @@ learns from the answer.
 
 Needs Python 3.11+, Node, Redis (started for you if installed but not running) and, for the
 Snort side, Snort 3. Ctrl+C stops everything; logs are in `logs/`. Training the models needs
-the datasets in `data/raw/` (see [data/README.md](data/README.md)).
+the datasets in `data/raw/` (see [docs/datasets.md](docs/datasets.md)).
 
 ## Setup
 
@@ -29,7 +29,7 @@ source .venv/bin/activate
 pip install -e ".[dev]"          # includes the web API deps; add ",live" for live capture
 ```
 
-Datasets go in `data/raw/` — see [data/README.md](data/README.md).
+Datasets go in `data/raw/` — see [docs/datasets.md](docs/datasets.md).
 
 ## Running
 
@@ -41,9 +41,9 @@ python experiments/tune.py scenario2 --fraction 0.2
 python experiments/tune.py scenario1 --protocol holdout
 
 # 2. evaluate on the test set, mean over seeds 0-2
-python experiments/run.py scenario2                       # ~5 min, ~842k test flows per seed
-python experiments/run.py scenario1 --protocol kddtest --cross-check-alpha 0.005
-python experiments/run.py scenario1 --protocol holdout --cross-check-min-accuracy 0.99
+python experiments/evaluate.py scenario2                       # ~5 min, ~842k test flows per seed
+python experiments/evaluate.py scenario1 --protocol kddtest --cross-check-alpha 0.005
+python experiments/evaluate.py scenario1 --protocol holdout --cross-check-min-accuracy 0.99
 
 # 3. self-learning over a time-ordered stream (~70 s at 20%)
 python experiments/self_learning.py --fraction 0.2                   # with cross-check
@@ -132,7 +132,7 @@ pip install -e ".[live]"
 sudo .venv/bin/nids extract --live eth0 --source cicids2017      # or: --live capture.pcap
 ```
 
-Flows come from the Python `cicflowmeter`, run through `nids.service.flowmeter`, which works
+Flows come from the Python `cicflowmeter`, run through `nids.capture.flowmeter`, which works
 around two bugs in cicflowmeter 0.5.0: its CLI passes arguments in the wrong order, and a flow
 without forward packets crashes its flow-writing thread (live capture would silently stop).
 Live traffic is analysed by the **live detectors** (below), not the CSV-trained ones. See
@@ -201,7 +201,7 @@ localhost: put an HTTPS reverse proxy in front and set `AUTH_COOKIE_SECURE=1`,
 
 Backend settings come from environment variables (or `backend/.env`): `DJANGO_SECRET_KEY`,
 `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `NIDS_REDIS_URL`, `NIDS_ROOT`,
-`DJANGO_DB_PATH`. Tests: `cd backend && python manage.py test monitoring`.
+`DJANGO_DB_PATH`. Tests: `cd backend && python manage.py test api`.
 
 ## Snort alongside the ML
 
@@ -221,7 +221,7 @@ packets ──> Snort (snort/nids.lua, snort/rules/nids.rules) ──> alert_jso
 ```
 
 - An alert is linked by connection (both IPs, ports, protocol, either direction) and time:
-  the alert must fall inside the flow's start-to-end window (`src/nids/service/flowindex.py`).
+  the alert must fall inside the flow's start-to-end window (`src/nids/services/flow_index.py`).
 - Host-level alerts — a port scan stands for many probe connections — are linked to every
   flow between the two hosts within ±30 s.
 - Detectors are specialists, so the ML verdict is *attack* if any detector with acceptable
@@ -276,7 +276,7 @@ botnet and web attacks from CSE-CIC-IDS2018 and joins the counselors network
 (`models/detector3.joblib`, used for flow-record replays):
 
 ```bash
-python experiments/coverage.py --skip infiltration --benign2017 0.2 --save
+python experiments/wider_coverage.py --skip infiltration --benign2017 0.2 --save
 ```
 
 | CSE-CIC-IDS2018 test | Detectors 1+2 | 1+2+3 |
@@ -305,10 +305,10 @@ packet-capture replays use two detectors trained on flows computed the live way,
 dataset's raw captures:
 
 ```bash
-python experiments/fetch_live_captures.py   # ~1.3 GB: single hosts' captures via HTTP range requests
-python experiments/build_live_dataset.py    # attack windows found in the packets; Python flow meter; labels
-python experiments/train_live.py            # models/live/live_dos.joblib, live_access.joblib
-python experiments/make_real_demo_pcap.py   # data/pcap/real-attacks-2018.pcap (held-out minutes)
+python scripts/live_detectors/fetch_captures.py   # ~1.3 GB: single hosts' captures via HTTP range requests
+python scripts/live_detectors/build_dataset.py    # attack windows found in the packets; Python flow meter; labels
+python scripts/live_detectors/train.py            # models/live/live_dos.joblib, live_access.joblib
+python scripts/live_detectors/make_demo_capture.py   # data/pcap/real-attacks-2018.pcap (held-out minutes)
 ```
 
 (`./start.sh setup` runs these.) Test on the later 30% of each attack, by time:
@@ -341,22 +341,39 @@ detector (no single victim capture). Watch the false-alarm rate on your own netw
 - "Single classifier (max)" picks the best classifier per metric *on the test set* — an
   oracle the paper also reports, not something a deployed system could choose.
 
-## Layout
+## Project layout
 
-| Path | Contents |
-|---|---|
-| `src/nids/data/` | Dataset loaders (NSL-KDD, CICIDS2017, CSE-CIC-IDS2018) and feature-name mapping |
-| `src/nids/detector/` | Classifier selection and detection (Algorithms 1 & 2) |
-| `src/nids/counselor/` | Advice exchange between detectors |
-| `src/nids/scenarios.py` | Scenario setups with signature / validation / test splits |
-| `src/nids/service/` | Distributed services: extractor, observer, detector, monitor, live capture, Snort correlator |
-| `snort/` | Snort 3 config and rules used next to the ML |
-| `models/`, `models/live/` | CSV-trained detectors (flow records) and live detectors (packets) |
-| `docs/live-testing.md` | Testing on your own network |
-| `src/nids/cli.py` | `nids` command |
-| `experiments/` | `tune.py` (validation), `run.py` (test), `self_learning.py` |
-| `notebooks/` | `01` explores the datasets, `02` plots the results — no logic of their own |
-| `backend/` | Django API: REST endpoints, JWT auth, WebSocket live feed, replay control |
-| `frontend/` | Next.js dashboard |
-| `Dockerfile`, `docker-compose.yml` | Container setup |
-| `tests/` | pytest suite |
+```
+nids/
+├── start.sh                one command to set up and run everything
+├── pyproject.toml          the nids Python package and its dependencies
+├── docker-compose.yml      container stack (redis, api, web; headless services)
+├── docker/                 api.Dockerfile, web.Dockerfile
+├── docs/                   paper/ (the source paper), datasets.md, live-testing.md
+├── src/nids/               the core library and the `nids` command
+│   ├── datasets/           loaders: NSL-KDD, CICIDS2017, CSE-CIC-IDS2018; feature-name mapping
+│   ├── capture/            pcap reading and slicing, remote-zip fetching, the flow meter runner
+│   ├── detector/           classifier selection and detection (Algorithms 1 and 2), training
+│   ├── counselor/          advice exchange between detectors
+│   ├── services/           Redis services: extractor, observer, detector, live capture,
+│   │                       Snort bridge and flow index, monitor
+│   ├── scenarios.py        the paper's scenarios with signature / validation / test splits
+│   ├── evaluation.py       metrics and the paper's baselines
+│   ├── reporting.py        result files and comparison charts
+│   └── cli.py              `nids train | extract | observe | detect | snort | monitor | reset`
+├── experiments/            research: tune.py (validation), evaluate.py (test), self_learning.py,
+│                           wider_coverage.py (detector 3)
+├── scripts/                data pipelines: make_synthetic_capture.py, live_detectors/
+│                           (fetch_captures → build_dataset → train → make_demo_capture)
+├── backend/                Django API: config/ (settings, ASGI), api/ (REST views, WebSocket
+│                           live feed, replay control, results; auth/ for cookie and token login)
+├── frontend/               Next.js dashboard: src/app (pages), src/components/{ui,charts,panels},
+│                           src/lib (API client, auth, live feed)
+├── snort/                  Snort 3 config and rules used next to the ML
+├── notebooks/              dataset exploration and result plots (no logic of their own)
+└── tests/                  pytest suite, mirroring src/nids
+```
+
+Not in git (created locally): `data/` (raw datasets, replay files, captures, processed
+flows — see [docs/datasets.md](docs/datasets.md)), `models/` (trained detectors; `models/live/`
+for the live ones), `results/` (experiment outputs), `logs/` (service logs).

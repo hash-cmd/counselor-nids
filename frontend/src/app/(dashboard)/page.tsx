@@ -3,15 +3,15 @@
 import Link from "next/link";
 import { useMemo } from "react";
 
-import { BreakdownBars } from "@/components/breakdown-bars";
-import { DetectionTimeline, SOURCE_COLORS } from "@/components/detection-timeline";
-import { IncidentsTable } from "@/components/incidents";
-import { KpiStrip } from "@/components/kpi-strip";
-import { ReplayControls } from "@/components/replay-controls";
-import { OverlapChart } from "@/components/snort-panel";
-import { TopSources } from "@/components/top-sources";
+import { BreakdownChart } from "@/components/charts/breakdown-chart";
+import { DetectionTimeline, SOURCE_COLORS } from "@/components/charts/detection-timeline";
+import { IncidentsTable } from "@/components/panels/incidents";
+import { KpiStrip } from "@/components/panels/kpi-strip";
+import { TrafficControls } from "@/components/panels/traffic-controls";
+import { OverlapChart } from "@/components/charts/overlap-chart";
+import { TopSources } from "@/components/panels/top-sources";
 import { buildIncidents } from "@/lib/incidents";
-import { useLive } from "@/lib/live";
+import { useLive } from "@/lib/live-feed";
 
 export default function OverviewPage() {
   const live = useLive();
@@ -21,7 +21,7 @@ export default function OverviewPage() {
   return (
     <>
       <h1 className="text-xl font-semibold text-ink">Overview</h1>
-      <ReplayControls status={live.replay} activity={live.activity} />
+      <TrafficControls status={live.replay} activity={live.activity} />
       <KpiStrip live={live} />
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -32,14 +32,14 @@ export default function OverviewPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <BreakdownBars
+        <BreakdownChart
           title="Attack types caught by the ML"
           subtitle="Flagged flows by their true label"
           counts={breakdown?.ml_labels ?? {}}
           color={SOURCE_COLORS.ml}
           empty="True labels exist only for recorded flows (CICIDS2017); captures and live traffic are unlabelled."
         />
-        <BreakdownBars
+        <BreakdownChart
           title="Snort rules triggered"
           subtitle="Snort alerts by rule"
           counts={breakdown?.snort_rules ?? {}}

@@ -30,3 +30,6 @@ logs/
 
 # docker-compose secrets
 /.env
+
+# local tool settings
+.claude/settings.local.json

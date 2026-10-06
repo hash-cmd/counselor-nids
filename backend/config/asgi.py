@@ -9,8 +9,8 @@ from channels.routing import ProtocolTypeRouter, URLRouter  # noqa: E402
 from channels.security.websocket import AllowedHostsOriginValidator  # noqa: E402
 from django.urls import path  # noqa: E402
 
-from monitoring.consumers import LiveConsumer  # noqa: E402
-from monitoring.ws_auth import JWTAuthMiddleware  # noqa: E402
+from api.consumers import LiveConsumer  # noqa: E402
+from api.auth.websocket import JWTAuthMiddleware  # noqa: E402
 
 application = ProtocolTypeRouter({
     "http": django_asgi_app,

@@ -18,7 +18,7 @@ import pandas as pd
 from nids import scenarios
 from nids.counselor import CounselorNetwork
 from nids.evaluation import metrics
-from nids.experiments import RESULTS_DIR
+from nids.reporting import RESULTS_DIR
 
 
 def stream(detectors, chunks, args, retrain: bool) -> list[dict]:

@@ -181,23 +181,23 @@ cmd_setup() {
     say "training detectors (a few minutes)"
     "$NIDS" train scenario2 --fraction 0.05
   else
-    warn "no data/raw/cicids2017 — download the datasets (data/README.md), then rerun setup to train"
+    warn "no data/raw/cicids2017 — download the datasets (docs/datasets.md), then rerun setup to train"
   fi
 
   if compgen -G "models/live/*.joblib" >/dev/null; then
     say "live detectors found in models/live/"
   else
     say "live detectors: fetching ~1.3 GB of CSE-CIC-IDS2018 captures and training (about 30 minutes)"
-    "$PY" experiments/fetch_live_captures.py \
-      && "$PY" experiments/build_live_dataset.py \
-      && "$PY" experiments/train_live.py \
-      && "$PY" experiments/make_real_demo_pcap.py \
+    "$PY" scripts/live_detectors/fetch_captures.py \
+      && "$PY" scripts/live_detectors/build_dataset.py \
+      && "$PY" scripts/live_detectors/train.py \
+      && "$PY" scripts/live_detectors/make_demo_capture.py \
       || warn "live detectors not built — live mode will fall back to the CSV-trained models"
   fi
 
   [[ -f data/pcap/demo-attacks.pcap ]] || {
     say "demo capture"
-    "$PY" experiments/make_attack_pcap.py data/pcap/demo-attacks.pcap
+    "$PY" scripts/make_synthetic_capture.py data/pcap/demo-attacks.pcap
   }
   command -v snort >/dev/null || warn "Snort is not installed — live mode will run the ML only"
   say "done — now run: ./start.sh"

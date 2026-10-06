@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 
-import { AlertsTable } from "@/components/alerts-table";
-import { type Filter, IncidentFilters, IncidentsTable } from "@/components/incidents";
-import { SnortAlertsTable } from "@/components/snort-panel";
+import { MlAlertsTable } from "@/components/panels/ml-alerts-table";
+import { type Filter, IncidentFilters, IncidentsTable } from "@/components/panels/incidents";
+import { SnortAlertsTable } from "@/components/panels/snort-alerts-table";
 import { count } from "@/lib/format";
 import { useIncidents } from "@/lib/incidents";
-import { useLive } from "@/lib/live";
+import { useLive } from "@/lib/live-feed";
 
 const TABS = [
   { key: "incidents", label: "Incidents" },
@@ -86,7 +86,7 @@ export default function AlertsPage() {
           }
         />
       )}
-      {tab === "ml" && <AlertsTable alerts={live.alerts} detectors={detectors} />}
+      {tab === "ml" && <MlAlertsTable alerts={live.alerts} detectors={detectors} />}
       {tab === "snort" && <SnortAlertsTable alerts={live.snortAlerts} />}
     </>
   );
