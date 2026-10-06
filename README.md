@@ -7,6 +7,19 @@ Detectors pick the most accurate classifiers per K-Means cluster; when the selec
 classifiers disagree, the detector asks other detectors ("counselors") for advice and
 learns from the answer.
 
+## Quick start
+
+```bash
+./start.sh setup              # once: Python env, packages, database, login user, models, demo capture
+./start.sh                    # dashboard on http://localhost:3000 — start replays from the browser
+./start.sh live eth0          # Snort + ML on a network interface, plus the dashboard (asks for sudo)
+./start.sh live capture.pcap  # the same on a recorded capture
+```
+
+Needs Python 3.11+, Node, Redis (started for you if installed but not running) and, for the
+Snort side, Snort 3. Ctrl+C stops everything; logs are in `logs/`. Training the models needs
+the datasets in `data/raw/` (see [data/README.md](data/README.md)).
+
 ## Setup
 
 ```bash
