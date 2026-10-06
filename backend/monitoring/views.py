@@ -14,11 +14,12 @@ class MeView(APIView):
 
 
 class DetectorsView(APIView):
-    """Live counters of every detector service, plus the replay state."""
+    """Live counters of every detector service, breakdowns, and the replay state."""
 
     def get(self, request):
-        return Response({"detectors": monitor.read_stats(get_redis()),
-                         "replay": replay.manager.status()})
+        r = get_redis()
+        return Response({"detectors": monitor.read_stats(r), "breakdown": monitor.read_breakdown(r),
+                         "activity": monitor.read_activity(r), "replay": replay.manager.status()})
 
 
 class AlertsView(APIView):
@@ -28,6 +29,19 @@ class AlertsView(APIView):
         limit = min(int(request.query_params.get("limit", 50)), 500)
         after = request.query_params.get("after")
         return Response({"alerts": monitor.read_alerts(get_redis(), limit, after)})
+
+
+class IncidentsView(APIView):
+    """Flagged flows with what the ML and Snort said: ?source=all|both|ml|snort&q=&limit=&offset="""
+
+    def get(self, request):
+        params = request.query_params
+        source = params.get("source", "all")
+        if source not in ("all", *monitor.SOURCES):
+            return Response({"detail": f"unknown source {source!r}"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(monitor.read_incidents(
+            get_redis(), source, params.get("q", ""),
+            limit=min(int(params.get("limit", 50)), 500), offset=max(int(params.get("offset", 0)), 0)))
 
 
 class ResultsView(APIView):

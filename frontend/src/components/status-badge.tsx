@@ -6,10 +6,12 @@ const STYLES = {
   neutral: { color: "var(--ink-muted)", icon: "○" },
 } as const;
 
-export function StatusBadge({ tone, label }: { tone: keyof typeof STYLES; label: string }) {
+export type Tone = keyof typeof STYLES;
+
+export function StatusBadge({ tone, label }: { tone: Tone; label: string }) {
   const style = STYLES[tone];
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-0.5 text-xs text-ink">
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-line px-2.5 py-0.5 text-xs text-ink">
       <span aria-hidden style={{ color: style.color }}>
         {style.icon}
       </span>

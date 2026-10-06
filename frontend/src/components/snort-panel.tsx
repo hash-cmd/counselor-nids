@@ -16,18 +16,8 @@ const AGREEMENT = {
   unmatched: { tone: "neutral", label: "No matching flow" },
 } as const;
 
-function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
-  return (
-    <div>
-      <p className="text-xs text-ink-2">{label}</p>
-      <p className="mt-0.5 text-2xl font-semibold text-ink">{value}</p>
-      <p className="text-xs text-muted">{hint}</p>
-    </div>
-  );
-}
-
 /** Flagged flows by who flagged them. One measure, so one neutral colour for every bar. */
-function OverlapChart({ summary }: { summary: SnortSummary }) {
+export function OverlapChart({ summary }: { summary: SnortSummary }) {
   const { view, toggle } = useViewToggle();
   const total = summary.flows.both + summary.flows.snort_only + summary.flows.ml_only;
   const rows = [
@@ -78,7 +68,7 @@ function OverlapChart({ summary }: { summary: SnortSummary }) {
   );
 }
 
-function SnortAlertsTable({ alerts }: { alerts: SnortAlert[] }) {
+export function SnortAlertsTable({ alerts }: { alerts: SnortAlert[] }) {
   const [filter, setFilter] = useState<"all" | SnortAlert["agreement"]>("all");
   const shown = useMemo(() => (filter === "all" ? alerts : alerts.filter((a) => a.agreement === filter)), [alerts, filter]);
 
@@ -152,24 +142,5 @@ function SnortAlertsTable({ alerts }: { alerts: SnortAlert[] }) {
         </div>
       )}
     </Card>
-  );
-}
-
-/** Snort and the ML on the same traffic: shown only while Snort results exist. */
-export function SnortPanel({ summary, alerts }: { summary: SnortSummary | null; alerts: SnortAlert[] }) {
-  if (!summary) return null;
-  const decided = summary.confirmed + summary.disputed;
-  return (
-    <>
-      <h2 className="pt-2 text-base font-semibold text-ink">Snort and the ML</h2>
-      <section className="grid gap-4 rounded-xl border border-line bg-surface p-5 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Snort alerts" value={count(summary.alerts)} hint={summary.pending ? `${count(summary.pending)} waiting for their flow` : "all linked or resolved"} />
-        <Stat label="Confirmed by ML" value={count(summary.confirmed)} hint={decided ? `${percent(summary.confirmed / decided, 1)} of alerts with a verdict` : "—"} />
-        <Stat label="Disputed by ML" value={count(summary.disputed)} hint="Snort flagged, ML says normal" />
-        <Stat label="Caught by ML only" value={count(summary.flows.ml_only)} hint="flows with no Snort alert" />
-      </section>
-      <OverlapChart summary={summary} />
-      <SnortAlertsTable alerts={alerts} />
-    </>
   );
 }

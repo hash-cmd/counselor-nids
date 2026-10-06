@@ -139,9 +139,17 @@ live traffic has **not** been measured and will be lower than the experiments.
 
 ## Dashboard (Django API + Next.js)
 
-A web dashboard shows the detection as it happens: start/stop a replay, per-detector stats,
-throughput, how each decision was made (unanimous / counselor advice / cross-check / fallback)
-and the stream of attack alerts, plus a results page with the experiment charts.
+A web dashboard shows the detection as it happens:
+
+| Page | |
+|---|---|
+| **Overview** | traffic controls (packet capture + Snort, or recorded flows), headline numbers, ML vs Snort detections over time, who flagged each flow, attack types and Snort rules, top attacking sources, latest incidents |
+| **Alerts** | every flagged flow once ("incident") with what the ML and Snort said — filter by ML + Snort / ML only / Snort only, search by IP, rule, label or flow, details panel; searched server-side over the full history |
+| **Detectors** | each ML detector: counters, throughput, how decisions were made (unanimous / counselor advice / cross-check / fallback) |
+| **Results** | the experiment comparisons and self-learning curves |
+
+Live data comes over one WebSocket shared by all pages. A capture started with
+`./start.sh live wlan0` shows up as "Live capture running".
 
 ```
 detector services --Redis--> Django API (DRF + Channels) --REST + WebSocket--> Next.js
@@ -153,6 +161,7 @@ detector services --Redis--> Django API (DRF + Channels) --REST + WebSocket--> N
 | `GET /api/auth/me/` | current user |
 | `GET /api/detectors/` | live counters per detector + replay state |
 | `GET /api/alerts/?limit=&after=` | latest attack decisions |
+| `GET /api/incidents/?source=&q=&limit=&offset=` | flagged flows with ML and Snort verdicts, over the full history |
 | `GET /api/results/` | experiment comparisons and self-learning curves |
 | `GET /api/replay/`, `POST /api/replay/start/`, `POST /api/replay/stop/` | replay control |
 | `ws://…/ws/live/?token=<access>` | stats every second, new alerts, reset on a new replay |

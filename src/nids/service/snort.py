@@ -36,7 +36,7 @@ from .detector_service import RemoteCounselor
 ALERTS = f"{bus.PREFIX}:snort:alerts"
 STATS = f"{bus.PREFIX}:stats:snort"
 FLAGGED_SNORT = f"{bus.PREFIX}:flagged:snort"
-FLAGGED_ML = f"{bus.PREFIX}:flagged:ml"
+FLAGGED_ML = bus.FLAGGED_ML
 ACTIVE = bus.SNORT_ACTIVE  # detectors keep answering advice while this is set
 
 HOST_LEVEL_GIDS = {122}  # port_scan inspector
@@ -198,9 +198,13 @@ class Correlator:
             "ml_confidence": "" if verdict is None else verdict["confidence"],
             "ml_detector": "" if verdict is None else verdict["detector"],
         }
+        entry["time"] = time.time()
         pipe = self.r.pipeline()
-        pipe.xadd(ALERTS, entry, maxlen=10_000, approximate=True)
+        pipe.xadd(ALERTS, entry, maxlen=bus.ALERTS_KEPT, approximate=True)
         pipe.hincrby(STATS, agreement, 1)
+        pipe.hincrby(bus.SNORT_RULES, entry["msg"], 1)
+        if alert.get("src_addr"):
+            pipe.hincrby(bus.SNORT_SOURCES, alert["src_addr"], 1)
         pipe.execute()
 
 

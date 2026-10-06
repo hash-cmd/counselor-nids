@@ -48,8 +48,9 @@ def snort_available() -> bool:
 
 
 def _files() -> dict[str, tuple[str, Path]]:
-    files = {p.name: ("flows", p) for p in sorted(replay_dir().glob("*.csv"))}
-    files |= {p.name: ("pcap", p) for p in sorted([*pcap_dir().glob("*.pcap"), *pcap_dir().glob("*.pcapng")])}
+    # packet captures first: they run with Snort, which flow records cannot
+    files = {p.name: ("pcap", p) for p in sorted([*pcap_dir().glob("*.pcap"), *pcap_dir().glob("*.pcapng")])}
+    files |= {p.name: ("flows", p) for p in sorted(replay_dir().glob("*.csv"))}
     return files
 
 

@@ -90,3 +90,18 @@ def test_remote_counselor_times_out_gracefully(server):
     counselor = detector_service.RemoteCounselor(client(server), "nobody", timeout=0.2)
     found, _, _ = counselor.advise_many(np.array([1.0, 2.0]), window=0)
     assert not found.any()
+
+
+def test_breakdowns_count_each_flagged_flow_once(server, blobs):
+    frame = blobs.assign(label="DDoS", src_ip="10.0.0.66", src_port=1234, dst_ip="10.0.0.80", conn_dst_port=80)
+    r = run_pipeline(server, frame, [accurate(frame, "d1"), accurate(frame, "d2")])
+
+    breakdown = monitor.read_breakdown(r)
+    flagged = breakdown["ml_flagged_flows"]
+    assert flagged > 0
+    assert breakdown["ml_labels"] == {"DDoS": flagged}  # not doubled by two detectors
+    assert breakdown["sources"][0] == {"ip": "10.0.0.66", "ml": flagged, "snort": 0}
+    alert = monitor.read_alerts(r, 1)[0]
+    assert alert["src"] == "10.0.0.66:1234" and alert["dst"] == "10.0.0.80:80"
+    assert alert["time"] is not None
+    assert monitor.read_activity(r) == "ended"

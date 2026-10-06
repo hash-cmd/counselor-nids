@@ -79,8 +79,21 @@ def serve_advice(r: redis.Redis, detector: Detector, state: State, wait: float) 
         r.expire(request["reply_to"], 60)
 
 
+def _endpoints(frame: pd.DataFrame) -> tuple[pd.Series | None, pd.Series | None]:
+    """Source and destination as "ip:port" when the flows carry them (packet captures);
+    replayed flow records only know the destination port."""
+    port = frame["conn_dst_port"] if "conn_dst_port" in frame else frame.get("Destination Port")
+    if "src_ip" in frame:
+        src = frame["src_ip"].astype(str) + ":" + frame["src_port"].astype(int).astype(str)
+        dst = frame["dst_ip"].astype(str) + ":" + port.astype(int).astype(str)
+        return src, dst
+    if port is not None:
+        return None, "port " + port.astype(int).astype(str)
+    return None, None
+
+
 def record(r: redis.Redis, name: str, frame: pd.DataFrame, final: pd.DataFrame) -> None:
-    """Update counters and publish attack alerts."""
+    """Update counters, breakdowns and the alerts stream."""
     resolution = final["resolution"].value_counts()
     attack = final["prediction"].to_numpy(dtype=bool)
     counters = {
@@ -92,20 +105,44 @@ def record(r: redis.Redis, name: str, frame: pd.DataFrame, final: pd.DataFrame) 
         truth = frame["is_attack"].to_numpy(dtype=bool)
         counters |= {"correct": int((attack == truth).sum()), "true_attacks": int(truth.sum()),
                      "detected_attacks": int((attack & truth).sum())}
+    src, dst = _endpoints(frame)
+    flagged_rows = final.index[attack]
+    flagged_ids = frame.loc[flagged_rows, "record_id"].astype(int).tolist()
+
+    # Flows flagged by any detector, counted once: breakdowns grow only for flows
+    # no other detector has flagged yet.
+    if flagged_ids:
+        pipe = r.pipeline()
+        for record_id in flagged_ids:
+            pipe.sadd(bus.FLAGGED_ML, record_id)
+        new = [row for row, added in zip(flagged_rows, pipe.execute()) if added]
+    else:
+        new = []
+
     pipe = r.pipeline()
     for key, value in counters.items():
         pipe.hincrby(bus.stats(name), key, value)
-    flagged_ids = frame.loc[final.index[attack], "record_id"].astype(int).tolist()
-    if flagged_ids:  # for comparing with Snort: flows the ML flagged
-        pipe.sadd(f"{bus.PREFIX}:flagged:ml", *flagged_ids)
-        pipe.expire(f"{bus.PREFIX}:flagged:ml", 3600)
-    flagged = final[attack].join(frame[["record_id"] + (["label"] if "label" in frame else [])])
-    for row in flagged.itertuples():
-        pipe.xadd(bus.ALERTS, {
-            "detector": name, "record_id": int(row.record_id), "timestamp": row.timestamp,
-            "resolution": row.resolution, "counselor": row.counselor or "",
-            **({"label": row.label} if "label" in frame else {}),
-        }, maxlen=10_000, approximate=True)
+    pipe.expire(bus.FLAGGED_ML, 3600)
+    for row in new:
+        if "label" in frame:
+            pipe.hincrby(bus.ML_LABELS, str(frame.at[row, "label"]), 1)
+        if src is not None:
+            pipe.hincrby(bus.ML_SOURCES, frame.at[row, "src_ip"], 1)
+
+    now = time.time()
+    for row in flagged_rows:
+        result = final.loc[row]
+        entry = {
+            "detector": name, "record_id": int(frame.at[row, "record_id"]), "timestamp": float(result.timestamp),
+            "time": now, "resolution": str(result.resolution), "counselor": result.counselor or "",
+        }
+        if "label" in frame:
+            entry["label"] = str(frame.at[row, "label"])
+        if src is not None:
+            entry["src"] = src.at[row]
+        if dst is not None:
+            entry["dst"] = dst.at[row]
+        pipe.xadd(bus.ALERTS, entry, maxlen=bus.ALERTS_KEPT, approximate=True)
     pipe.execute()
 
 

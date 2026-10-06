@@ -1,0 +1,45 @@
+import { count } from "@/lib/format";
+import type { Breakdown } from "@/lib/types";
+
+import { Card } from "./chart-parts";
+import { SOURCE_COLORS } from "./detection-timeline";
+
+/** Source IPs behind the most detections. Needs packet captures or live traffic:
+ *  replayed flow records carry no addresses. */
+export function TopSources({ sources }: { sources: Breakdown["sources"] }) {
+  const max = Math.max(1, ...sources.map((s) => Math.max(s.ml, s.snort)));
+  return (
+    <Card title="Top attacking sources" subtitle="Source IPs behind the most detections">
+      {sources.length === 0 ? (
+        <p className="flex h-40 items-center justify-center px-6 text-center text-sm text-muted">
+          Source addresses appear for packet captures and live traffic.
+        </p>
+      ) : (
+        <table className="w-full text-xs">
+          <thead className="text-left text-muted">
+            <tr>
+              <th className="pb-2 font-medium">Source</th>
+              <th className="pb-2 font-medium">Flagged by the ML</th>
+              <th className="pb-2 font-medium">Snort alerts</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sources.map((s) => (
+              <tr key={s.ip} className="border-t border-line">
+                <td className="tabular py-1.5 pr-3 text-ink">{s.ip}</td>
+                {(["ml", "snort"] as const).map((key) => (
+                  <td key={key} className="py-1.5 pr-3">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block h-2 rounded-sm" style={{ width: `${(s[key] / max) * 64}px`, background: SOURCE_COLORS[key] }} />
+                      <span className="tabular text-ink-2">{count(s[key])}</span>
+                    </div>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Card>
+  );
+}

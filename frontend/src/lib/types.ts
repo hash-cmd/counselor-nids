@@ -32,10 +32,25 @@ export type Alert = {
   detector: string;
   record_id: number;
   timestamp: number;
+  /** wall-clock time the detector decided (Unix seconds) */
+  time: number | null;
   resolution: "unanimous" | "advice" | "cross_check" | "fallback";
   counselor: string | null;
   label?: string;
+  /** "ip:port" — packet captures and live traffic only */
+  src: string | null;
+  /** "ip:port", or "port N" for replayed flow records */
+  dst: string | null;
 };
+
+export type Breakdown = {
+  ml_labels: Record<string, number>;
+  snort_rules: Record<string, number>;
+  sources: { ip: string; ml: number; snort: number }[];
+  ml_flagged_flows: number;
+};
+
+export type Activity = "idle" | "running" | "ended";
 
 export type ReplayOptions = {
   replays: { name: string; kind: "flows" | "pcap"; size_mb: number }[];
@@ -72,6 +87,7 @@ export type SnortAlert = {
   ml_share: number | null;
   ml_confidence: number | null;
   ml_detector: string | null;
+  time: number | null;
 };
 
 export type ComparisonRow = {

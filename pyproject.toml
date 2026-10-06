@@ -13,10 +13,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-service = ["redis"]
-live = ["redis", "cicflowmeter"]
+service = ["redis[hiredis]"]
+live = ["redis[hiredis]", "cicflowmeter"]
 web = [
-    "redis", "django", "djangorestframework", "djangorestframework-simplejwt",
+    "redis[hiredis]", "django", "djangorestframework", "djangorestframework-simplejwt",
     "django-cors-headers", "channels", "daphne", "python-decouple",
 ]
 dev = ["pytest", "jupyterlab", "nbconvert", "fakeredis", "nids[web]"]

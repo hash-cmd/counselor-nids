@@ -147,3 +147,32 @@ def test_follow_alerts_reads_appended_lines_and_heartbeats(tmp_path):
 def test_snort_command():
     assert snort.snort_command("x.pcap", "/tmp/l")[-5:] == ["-r", "x.pcap", "-l", "/tmp/l", "-q"]
     assert "-i" in snort.snort_command("eth0", "/tmp/l")
+
+
+def test_incidents_merge_ml_and_snort_by_flow(r):
+    for detector in ("d1", "d2"):  # two detectors flag flow 1: one incident
+        r.xadd(bus.ALERTS, {"detector": detector, "record_id": 1, "timestamp": 1.0, "time": 100.0,
+                            "resolution": "unanimous", "counselor": "", "src": "172.16.0.1:999", "dst": "10.0.0.80:80"})
+    r.xadd(bus.ALERTS, {"detector": "d1", "record_id": 2, "timestamp": 2.0, "time": 101.0,
+                        "resolution": "advice", "counselor": "d2"})
+    entry = {"seconds": 100, "gid": 1, "priority": 1, "class": "", "proto": "TCP", "ml_share": "", "ml_confidence": "",
+             "ml_detector": "", "time": 102.0}
+    r.xadd(snort.ALERTS, {**entry, "msg": "NIDS possible SYN flood", "sid": 9000010, "src": "172.16.0.1:999",
+                          "dst": "10.0.0.80:80", "flows": 1, "record_id": 1, "agreement": "confirmed", "ml_verdict": "attack"})
+    r.xadd(snort.ALERTS, {**entry, "msg": "NIDS SQL injection attempt", "sid": 9000001, "src": "10.0.0.66:41000",
+                          "dst": "10.0.0.80:80", "flows": 1, "record_id": 3, "agreement": "disputed", "ml_verdict": "normal"})
+    r.xadd(snort.ALERTS, {**entry, "msg": "ICMP thing", "sid": 1, "src": "10.0.0.5", "dst": "10.0.0.80",
+                          "flows": 0, "record_id": -1, "agreement": "unmatched", "ml_verdict": ""})
+
+    result = monitor.read_incidents(r)
+    assert result["counts"] == {"all": 4, "both": 1, "ml": 1, "snort": 2}
+    flood = next(i for i in result["incidents"] if i["record_id"] == 1)
+    assert flood["source"] == "both"
+    assert sorted(flood["ml"]["detectors"]) == ["d1", "d2"]
+    assert flood["snort"]["rules"] == ["NIDS possible SYN flood"]
+
+    sql = monitor.read_incidents(r, "snort", "sql")
+    assert sql["total"] == 1 and sql["incidents"][0]["snort"]["ml_verdict"] == "normal"
+    assert monitor.read_incidents(r, query="172.16")["total"] == 1
+    page = monitor.read_incidents(r, limit=2, offset=2)
+    assert page["total"] == 4 and len(page["incidents"]) == 2

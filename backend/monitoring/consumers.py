@@ -1,7 +1,8 @@
 """Live feed for the dashboard over a WebSocket.
 
 Every ``INTERVAL`` seconds the client receives:
-    {"type": "stats",  "detectors": {...}, "snort": {...} | null, "replay": {...}, "time": <unix s>}
+    {"type": "stats",  "detectors": {...}, "snort": {...} | null, "breakdown": {...},
+     "activity": "idle" | "running" | "ended", "replay": {...}, "time": <unix s>}
     {"type": "alerts", "alerts": [...newest first, at most MAX_ALERTS...]}   (only when new)
     {"type": "snort_alerts", "alerts": [...]}                               (only when new)
 When a new replay starts it first receives {"type": "reset"}.
@@ -18,7 +19,7 @@ from . import replay
 from .redis_client import get_redis
 
 INTERVAL = 1.0
-MAX_ALERTS = 100
+MAX_ALERTS = 200
 
 
 class LiveConsumer(AsyncJsonWebsocketConsumer):
@@ -46,7 +47,10 @@ class LiveConsumer(AsyncJsonWebsocketConsumer):
 
             stats = await asyncio.to_thread(monitor.read_stats, r)
             snort = await asyncio.to_thread(monitor.read_snort, r)
+            breakdown = await asyncio.to_thread(monitor.read_breakdown, r)
+            activity = await asyncio.to_thread(monitor.read_activity, r)
             await self.send_json({"type": "stats", "detectors": stats, "snort": snort,
+                                  "breakdown": breakdown, "activity": activity,
                                   "replay": replay.manager.status(), "time": time.time()})
 
             snort_alerts = await asyncio.to_thread(monitor.read_snort_alerts, r, MAX_ALERTS, last_snort)

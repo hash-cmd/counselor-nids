@@ -39,9 +39,43 @@ def read_alerts(r: redis.Redis, count: int = 50, after: str | None = None) -> li
         alert["id"] = bus.text(entry_id)
         alert["record_id"] = int(alert["record_id"])
         alert["timestamp"] = float(alert["timestamp"])
+        alert["time"] = float(alert["time"]) if alert.get("time") else None
         alert["counselor"] = alert.get("counselor") or None
+        alert.setdefault("src", None)
+        alert.setdefault("dst", None)
         alerts.append(alert)
     return alerts
+
+
+def _top(r: redis.Redis, key: str, n: int) -> dict[str, int]:
+    counts = {bus.text(k): int(v) for k, v in r.hgetall(key).items()}
+    return dict(sorted(counts.items(), key=lambda kv: -kv[1])[:n])
+
+
+def read_breakdown(r: redis.Redis, n: int = 8) -> dict:
+    """What was flagged: ML-flagged flows by true label, Snort alerts by rule, and the
+    sources behind both (packet captures only)."""
+    ml_sources, snort_sources = _top(r, bus.ML_SOURCES, 50), _top(r, bus.SNORT_SOURCES, 50)
+    sources = [
+        {"ip": ip, "ml": ml_sources.get(ip, 0), "snort": snort_sources.get(ip, 0)}
+        for ip in set(ml_sources) | set(snort_sources)
+    ]
+    sources.sort(key=lambda s: -(s["ml"] + s["snort"]))
+    return {
+        "ml_labels": _top(r, bus.ML_LABELS, n),
+        "snort_rules": _top(r, bus.SNORT_RULES, n),
+        "sources": sources[:n],
+        "ml_flagged_flows": r.scard(bus.FLAGGED_ML),
+    }
+
+
+def read_activity(r: redis.Redis) -> str:
+    """"running" while detector services are processing a stream, "ended" once they all
+    finished it, "idle" when none are running."""
+    subscribed = r.hlen(bus.SUBSCRIPTIONS)
+    if not subscribed:
+        return "idle"
+    return "ended" if r.scard(bus.ENDED) >= subscribed else "running"
 
 
 def read_snort(r: redis.Redis) -> dict | None:
@@ -76,12 +110,75 @@ def read_snort_alerts(r: redis.Redis, count: int = 50, after: str | None = None)
         a["id"] = bus.text(entry_id)
         for key in ("seconds", "gid", "sid", "priority", "flows", "record_id"):
             a[key] = int(a[key])
+        a["time"] = float(a["time"]) if a.get("time") else None
         for key in ("ml_share", "ml_confidence"):
             a[key] = float(a[key]) if a[key] else None
         a["ml_verdict"] = a["ml_verdict"] or None
         a["ml_detector"] = a["ml_detector"] or None
         alerts.append(a)
     return alerts
+
+
+SOURCES = ("both", "ml", "snort")
+
+
+def read_incidents(r: redis.Redis, source: str = "all", query: str = "", limit: int = 50,
+                   offset: int = 0) -> dict:
+    """Every flagged flow once, with what the ML and Snort said, newest first.
+
+    Built from the whole ML and Snort alert streams, so nothing is missed because newer
+    alerts crowded it out. A flow flagged by several detectors is one incident; a Snort
+    alert the ML disputed stays "snort" (the ML looked and said normal).
+    """
+    incidents: dict[str, dict] = {}
+
+    def get(key: str, record_id: int | None) -> dict:
+        if key not in incidents:
+            incidents[key] = {"key": key, "record_id": record_id, "time": None, "src": None, "dst": None,
+                              "label": None, "ml": None, "snort": None}
+        return incidents[key]
+
+    for alert in reversed(read_alerts(r, bus.ALERTS_KEPT)):
+        i = get(f"flow-{alert['record_id']}", alert["record_id"])
+        ml = i["ml"] = i["ml"] or {"detectors": [], "resolutions": [], "counselors": []}
+        for field, value in (("detectors", alert["detector"]), ("resolutions", alert["resolution"]),
+                             ("counselors", alert["counselor"])):
+            if value and value not in ml[field]:
+                ml[field].append(value)
+        i["time"] = max(i["time"] or 0, alert["time"] or 0) or None
+        i["src"] = i["src"] or alert["src"]
+        i["dst"] = i["dst"] or alert["dst"]
+        i["label"] = i["label"] or alert.get("label")
+
+    for alert in reversed(read_snort_alerts(r, bus.ALERTS_KEPT)):
+        record_id = alert["record_id"] if alert["record_id"] >= 0 else None
+        i = get(f"flow-{record_id}" if record_id is not None else f"snort-{alert['id']}", record_id)
+        sn = i["snort"] = i["snort"] or {"rules": [], "ids": [], "flows": 0, "agreement": alert["agreement"],
+                                         "ml_verdict": alert["ml_verdict"]}
+        if alert["msg"] not in sn["rules"]:
+            sn["rules"].append(alert["msg"])
+        sn["ids"].append(f"{alert['gid']}:{alert['sid']}")
+        sn["flows"] = max(sn["flows"], alert["flows"])
+        if alert["agreement"] == "confirmed":
+            sn["agreement"] = "confirmed"
+        i["time"] = max(i["time"] or 0, alert["time"] or 0) or None
+        i["src"] = i["src"] or alert["src"] or None
+        i["dst"] = i["dst"] or alert["dst"] or None
+
+    for i in incidents.values():
+        i["source"] = "both" if i["ml"] and i["snort"] else "snort" if i["snort"] else "ml"
+
+    everything = sorted(incidents.values(), key=lambda i: (-(i["time"] or 0), -(i["record_id"] or 0)))
+    counts = {"all": len(everything), **{s: sum(i["source"] == s for i in everything) for s in SOURCES}}
+    q = query.strip().lower()
+
+    def matches(i: dict) -> bool:
+        fields = [i["src"], i["dst"], i["label"], str(i["record_id"]),
+                  *(i["snort"]["rules"] if i["snort"] else []), *(i["ml"]["detectors"] if i["ml"] else [])]
+        return any(q in f.lower() for f in fields if f)
+
+    chosen = [i for i in everything if (source == "all" or i["source"] == source) and (not q or matches(i))]
+    return {"counts": counts, "total": len(chosen), "incidents": chosen[offset:offset + limit]}
 
 
 def snapshot(r: redis.Redis) -> pd.DataFrame:

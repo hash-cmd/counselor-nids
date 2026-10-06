@@ -235,3 +235,13 @@ class SnortTests(LoggedInTestCase):
         self.assertEqual(body["summary"]["confirmed"], 1)
         alert = body["alerts"][0]
         self.assertEqual((alert["agreement"], alert["ml_verdict"], alert["sid"]), ("disputed", "normal", 9000001))
+
+
+class IncidentsTests(LoggedInTestCase):
+    def test_incidents_endpoint(self):
+        self.redis.xadd(bus.ALERTS, {"detector": "d1", "record_id": 7, "timestamp": 7.0, "time": 1.0,
+                                     "resolution": "unanimous", "counselor": "", "label": "DDoS"})
+        body = self.client.get("/api/incidents/?source=ml&q=ddos").json()
+        self.assertEqual(body["total"], 1)
+        self.assertEqual(body["incidents"][0]["label"], "DDoS")
+        self.assertEqual(self.client.get("/api/incidents/?source=nope").status_code, 400)
