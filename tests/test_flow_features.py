@@ -89,3 +89,16 @@ def test_live_connection_columns_use_local_time():
     assert out.loc[0, "flow_start"] == expected
     assert out.loc[0, "flow_end"] == expected + 2.5
     assert out.loc[0, "conn_dst_port"] == 80
+
+
+def test_flowmeter_patch_handles_flow_without_forward_packets():
+    from types import SimpleNamespace
+
+    from cicflowmeter.features.context import PacketDirection
+    from cicflowmeter.features.flow_bytes import FlowBytes
+
+    from nids.service.flowmeter import patch_cicflowmeter
+
+    patch_cicflowmeter()
+    flow = SimpleNamespace(packets=[(object(), PacketDirection.REVERSE)])
+    assert FlowBytes(flow).get_min_forward_header_bytes() == 0  # crashed with ValueError before

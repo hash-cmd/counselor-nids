@@ -4,12 +4,13 @@ import type { Breakdown } from "@/lib/types";
 import { Card } from "./chart-parts";
 import { SOURCE_COLORS } from "./detection-timeline";
 
-/** Source IPs behind the most detections. Needs packet captures or live traffic:
+/** Addresses that sent the first packet of the most flagged flows. For connections already
+ *  open when capture started, that can be the victim answering, so this is a lead, not proof. Needs packet captures or live traffic:
  *  replayed flow records carry no addresses. */
 export function TopSources({ sources }: { sources: Breakdown["sources"] }) {
   const max = Math.max(1, ...sources.map((s) => Math.max(s.ml, s.snort)));
   return (
-    <Card title="Top attacking sources" subtitle="Source IPs behind the most detections">
+    <Card title="Top sources of flagged flows" subtitle="The address that sent each flagged flow's first packet — usually the attacker">
       {sources.length === 0 ? (
         <p className="flex h-40 items-center justify-center px-6 text-center text-sm text-muted">
           Source addresses appear for packet captures and live traffic.

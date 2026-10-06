@@ -132,11 +132,11 @@ pip install -e ".[live]"
 sudo .venv/bin/nids extract --live eth0 --source cicids2017      # or: --live capture.pcap
 ```
 
-Flows come from the Python `cicflowmeter` (run through `nids.service.flowmeter`, because the
-package's own CLI is broken in 0.5.0) and are converted to CICIDS2017 names and units
-(`src/nids/data/flow_features.py`). The Python port computes some features differently
-from the Java CICFlowMeter the models were trained on (e.g. packet counts), so accuracy on
-live traffic has **not** been measured and will be lower than the experiments.
+Flows come from the Python `cicflowmeter`, run through `nids.service.flowmeter`, which works
+around two bugs in cicflowmeter 0.5.0: its CLI passes arguments in the wrong order, and a flow
+without forward packets crashes its flow-writing thread (live capture would silently stop).
+Live traffic is analysed by the **live detectors** (below), not the CSV-trained ones. See
+[docs/live-testing.md](docs/live-testing.md) for testing on your own network.
 
 ## Dashboard (Django API + Next.js)
 
@@ -228,12 +228,11 @@ packets ──> Snort (snort/nids.lua, snort/rules/nids.rules) ──> alert_jso
   accuracy says so (the same reasoning as cross-checking).
 
 ```bash
-python experiments/make_attack_pcap.py data/pcap/demo-attacks.pcap   # normal traffic + scan, web attacks, SYN flood, SSH brute force
 nids observe --exit-on-end &
-nids detect models/detector1.joblib --sources live --cross-check --exit-on-end &
-nids detect models/detector2.joblib --sources live --cross-check --exit-on-end &
-nids snort --pcap data/pcap/demo-attacks.pcap &
-nids extract --live data/pcap/demo-attacks.pcap --source live --wait-for 2
+nids detect models/live/live_dos.joblib --sources live --cross-check --exit-on-end &
+nids detect models/live/live_access.joblib --sources live --cross-check --exit-on-end &
+nids snort --pcap data/pcap/real-attacks-2018.pcap &
+nids extract --live data/pcap/real-attacks-2018.pcap --source live --wait-for 2
 ```
 
 Or pick the capture in the dashboard and tick **Run Snort on the same traffic**. Live:
@@ -241,26 +240,89 @@ Or pick the capture in the dashboard and tick **Run Snort on the same traffic**.
 existing Snort, `nids snort --follow /var/log/snort/alert_json.txt` (it needs the `seconds`,
 address, port and `proto` fields in `alert_json`).
 
-On the demo capture:
+On `real-attacks-2018.pcap` — real CSE-CIC-IDS2018 traffic from the late part of each attack,
+which the live detectors never trained on — the whole system (flow meter, live detectors,
+Snort, correlator) flags:
 
-| Traffic | Flows | ML flagged | Snort flagged |
+| Traffic | Flows | ML (live detectors) | Snort | Either |
+|---|---|---|---|---|
+| DoS GoldenEye | 2,046 | 100.0% | 4.4% | 100.0% |
+| DoS Hulk | 4,153 | 99.6% | 30.5% | 99.6% |
+| DoS SlowHTTPTest | 4,450 | 100.0% | 99.6% | 100.0% |
+| DoS Slowloris | 1,352 | 56.7% | 0.0% | 56.7% |
+| FTP brute force | 5,040 | 100.0% | 99.6% | 100.0% |
+| SSH brute force | 359 | 98.3% | 76.3% | 98.9% |
+| Web attacks | 4 | 4 of 4 | 0 | 4 of 4 |
+| **Normal (false alarms)** | 1,768 | **0.0%** | **0.0%** | **0.0%** |
+
+The ML confirms 11,077 of Snort's 11,079 alerts and catches the DoS attacks Snort's rules
+miss; Snort adds its payload rules. Slowloris is the weak spot, and varies between runs
+(57-67%): the flow meter times flows out by wall clock, so slow connections split differently.
+
+`demo-attacks.pcap` is **synthetic** (generated packets): Snort catches its attacks but the
+live detectors, trained on real traffic, flag none of them — a reminder that the ML only knows
+what it was trained on.
+
+Snort tuning (`snort/`): inspectors' built-in protocol-anomaly alerts are off (they flagged
+TLS sessions seen mid-stream as attacks — 35% of normal flows on the real capture); only the
+port-scan alerts (gid 122, except "open port") are on, and scan reports from port 53 are
+ignored (DNS answers looked like a UDP port scan). Snort is not in the Docker image (Debian
+has no package), so in Docker pcap replays run with the ML only.
+
+## Wider coverage: detector 3 (CSE-CIC-IDS2018)
+
+Detectors 1 and 2 know DoS, DDoS and PortScan (CICIDS2017). Detector 3 learns brute force,
+botnet and web attacks from CSE-CIC-IDS2018 and joins the counselors network
+(`models/detector3.joblib`, used for flow-record replays):
+
+```bash
+python experiments/coverage.py --skip infiltration --benign2017 0.2 --save
+```
+
+| CSE-CIC-IDS2018 test | Detectors 1+2 | 1+2+3 |
+|---|---|---|
+| Bot | 0.2% | 99.9% |
+| FTP / SSH brute force | 0.0% | ~100% |
+| Web brute force / XSS / SQL injection | 7-11% | 44% / 77% / 31% |
+| Benign (false alarms) | 5.23% | 5.24% |
+
+On the CICIDS2017 test, adding detector 3 changes nothing (accuracy 99.59% → 99.58%, false
+alarms 0.17% → 0.17%). Infiltration is left out: its flows look like normal traffic in this
+dataset, and learning them raised false alarms from 0.17% to 6.2%. This set-up was chosen
+after seeing the test results (the reasons are principled, but a fresh validation set would
+be stricter).
+
+`load_cse_cic_ids2018` reads the files in chunks and samples benign flows to fit in memory.
+Note the CSV timestamps are a 12-hour clock without AM/PM.
+
+## Live detectors (Python flow meter)
+
+Live capture computes features with the Python cicflowmeter, which differs from the Java
+CICFlowMeter behind the published CSVs in 71 of 154 feature medians (packet lengths include
+headers, flags and windows are counted differently, flows split differently). **The
+CSV-trained detectors flag 0% of brute-force flows computed this way.** So live mode and
+packet-capture replays use two detectors trained on flows computed the live way, from the
+dataset's raw captures:
+
+```bash
+python experiments/fetch_live_captures.py   # ~1.3 GB: single hosts' captures via HTTP range requests
+python experiments/build_live_dataset.py    # attack windows found in the packets; Python flow meter; labels
+python experiments/train_live.py            # models/live/live_dos.joblib, live_access.joblib
+python experiments/make_real_demo_pcap.py   # data/pcap/real-attacks-2018.pcap (held-out minutes)
+```
+
+(`./start.sh setup` runs these.) Test on the later 30% of each attack, by time:
+
+| Test flows | live_dos | live_access | Counselor network |
 |---|---|---|---|
-| Normal browsing | 100 | 0 | 0 |
-| SYN flood | 3,000 | 3,000 | 2,805 |
-| Port scan | 1,027 | 0 | all (one host-level alert) |
-| Web attacks (SQLi, XSS, traversal) | 18 | 0 | 18 |
-| SSH brute force | 59 | 0 | 41 |
+| DoS SlowHTTPTest / FTP brute force | 100% / 100% | 100% / 99.99% | 100% / 100% |
+| DoS Hulk / GoldenEye / Slowloris | 99.8% / 98.9% / 94.9% | 23% / 10% / 0% | 99.7% / 98.9% / 93.6% |
+| SSH brute force / web attacks | 0% / 0% | 99.6% / 100% | 99.6% / 89.4% |
+| **Benign (false alarms)** | 0.14% | 0.02% | **0.02%** |
 
-The ML confirms Snort's flood alerts and catches the first 195 flood flows before Snort's rate
-threshold fires; Snort catches the payload attacks, scan and brute force the models were never
-trained on (they learned CICIDS2017 DoS / DDoS / PortScan flow statistics; the synthetic scan
-differs from CICIDS2017's). Snort is not in the Docker image (Debian has no package), so in
-Docker the dashboard runs pcap replays with the ML only.
-
-## CSE-CIC-IDS2018
-
-`nids.data.cse_cic_ids2018.load_cse_cic_ids2018` loads the 2018 data with CICIDS2017 column
-names and real timestamps. It is set aside for later work and not used by the experiments.
+Limits: one attacker per attack type in one lab network; no live botnet, DDoS or infiltration
+detector (no single victim capture). Watch the false-alarm rate on your own network
+(docs/live-testing.md).
 
 ## Differences from the paper
 
@@ -289,6 +351,8 @@ names and real timestamps. It is set aside for later work and not used by the ex
 | `src/nids/scenarios.py` | Scenario setups with signature / validation / test splits |
 | `src/nids/service/` | Distributed services: extractor, observer, detector, monitor, live capture, Snort correlator |
 | `snort/` | Snort 3 config and rules used next to the ML |
+| `models/`, `models/live/` | CSV-trained detectors (flow records) and live detectors (packets) |
+| `docs/live-testing.md` | Testing on your own network |
 | `src/nids/cli.py` | `nids` command |
 | `experiments/` | `tune.py` (validation), `run.py` (test), `self_learning.py` |
 | `notebooks/` | `01` explores the datasets, `02` plots the results — no logic of their own |

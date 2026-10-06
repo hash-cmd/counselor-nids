@@ -53,8 +53,10 @@ export type Breakdown = {
 export type Activity = "idle" | "running" | "ended";
 
 export type ReplayOptions = {
-  replays: { name: string; kind: "flows" | "pcap"; size_mb: number }[];
+  replays: { name: string; kind: "flows" | "pcap"; size_mb: number; description: string | null }[];
   models: string[];
+  /** detectors trained on Python-flow-meter features, used for packet captures */
+  live_models: string[];
   snort: boolean;
   status: ReplayStatus;
 };
@@ -108,7 +110,16 @@ export type SelfLearningRow = {
   learned: number;
 };
 
+export type Metrics = { accuracy: number; detection_rate: number; false_alarm_rate: number };
+
+export type ByLabelTable = {
+  series: string[];
+  rows: { label: string; flows: number; flagged: Record<string, number | null> }[];
+  summary: Record<string, Metrics>;
+};
+
 export type Results = {
+  by_label: Partial<Record<"coverage_cse2018" | "coverage_cicids2017" | "live", ByLabelTable>>;
   comparisons: Record<string, { detectors: Record<string, ComparisonRow[]>; args: Record<string, unknown> | null }>;
   self_learning: Record<string, SelfLearningRow[]>;
 };

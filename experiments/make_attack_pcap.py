@@ -82,6 +82,10 @@ def build(seed: int = 0) -> tuple[list, dict]:
     return cap.packets, parts
 
 
+DESCRIPTION = ("Synthetic: generated packets (port scan, web attacks, SYN flood, SSH brute force). "
+               "Snort catches these; the ML, trained on real traffic, does not recognise them.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("output", type=Path)
@@ -91,6 +95,7 @@ def main():
     packets, parts = build(args.seed)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     wrpcap(str(args.output), packets)
+    args.output.with_name(args.output.name + ".txt").write_text(DESCRIPTION + "\n")  # shown in the dashboard
     print(f"wrote {len(packets):,} packets to {args.output}")
     for name, (begin, end) in parts.items():
         print(f"  {name:24s} {begin:.3f} - {end:.3f}")

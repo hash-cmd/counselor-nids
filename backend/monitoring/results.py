@@ -1,4 +1,4 @@
-"""Experiment results written by experiments/run.py and experiments/self_learning.py."""
+"""Experiment results written by the scripts in experiments/."""
 
 import json
 import math
@@ -46,3 +46,34 @@ def self_learning() -> dict:
         name: pd.read_csv(folder / file).to_dict(orient="records")
         for name, file in variants.items() if (folder / file).exists()
     }
+
+
+# Per-attack-type results: share of each label's test flows flagged as attack, for each
+# detector set. (file, key in summary.json) per table.
+BY_LABEL = {
+    "coverage_cse2018": ("coverage/cse2018_by_label.csv", ("coverage/summary.json", "cse2018")),
+    "coverage_cicids2017": ("coverage/cicids2017_by_label.csv", ("coverage/summary.json", "cicids2017")),
+    "live": ("live/by_label.csv", ("live/summary.json", "metrics")),
+}
+
+
+def by_label() -> dict:
+    """{name: {series: [...], rows: [{label, flows, flagged: {series: share}}], summary: {series: metrics}}}"""
+    root = settings.NIDS_ROOT / "results"
+    out = {}
+    for name, (table_file, (summary_file, key)) in BY_LABEL.items():
+        if not (root / table_file).exists():
+            continue
+        table = pd.read_csv(root / table_file, index_col=0)
+        series = [c for c in table.columns if c != "flows"]
+        summary = {}
+        if (root / summary_file).exists():
+            summary = json.loads((root / summary_file).read_text()).get(key, {})
+        out[name] = {
+            "series": series,
+            "rows": [{"label": label, "flows": int(row["flows"]),
+                      "flagged": {s: _clean(float(row[s])) for s in series}}
+                     for label, row in table.iterrows()],
+            "summary": summary,
+        }
+    return out

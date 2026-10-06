@@ -104,6 +104,13 @@ export function ReplayControls({ status, activity }: { status: ReplayStatus; act
                 {KINDS[k].title}
               </p>
               <p className="mt-1 text-xs text-ink-2">{KINDS[k].text}</p>
+              {k === "pcap" && options && (
+                <p className={`mt-1 text-xs ${options.live_models.length ? "text-muted" : "text-critical"}`}>
+                  {options.live_models.length
+                    ? `ML: live detectors (${options.live_models.join(", ")})`
+                    : "No live detectors yet — the ML will miss most attacks here. Run ./start.sh setup."}
+                </p>
+              )}
               {active && (
                 <select
                   value={files[k]}
@@ -120,6 +127,9 @@ export function ReplayControls({ status, activity }: { status: ReplayStatus; act
                     </option>
                   ))}
                 </select>
+              )}
+              {active && available.find((r) => r.name === files[k])?.description && (
+                <p className="mt-2 text-xs text-ink-2">{available.find((r) => r.name === files[k])?.description}</p>
               )}
             </div>
           );

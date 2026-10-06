@@ -47,7 +47,8 @@ class IncidentsView(APIView):
 class ResultsView(APIView):
     def get(self, request):
         return Response({"comparisons": results.comparisons(),
-                         "self_learning": results.self_learning()})
+                         "self_learning": results.self_learning(),
+                         "by_label": results.by_label()})
 
 
 class SnortView(APIView):

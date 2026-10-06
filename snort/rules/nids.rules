@@ -1,5 +1,33 @@
 # Snort 3 rules used alongside the ML detectors (sid 9000000+).
-# Port scans are reported by the port_scan inspector (gid 122), not by rules here.
+# Port scans are reported by the port_scan inspector (gid 122); these stubs turn its
+# alerts on (122:27 "open port" is left off: it fires on ordinary traffic).
+alert ( msg:"(port_scan) TCP portscan"; gid:122; sid:1; rev:1; )
+alert ( msg:"(port_scan) TCP decoy portscan"; gid:122; sid:2; rev:1; )
+alert ( msg:"(port_scan) TCP portsweep"; gid:122; sid:3; rev:1; )
+alert ( msg:"(port_scan) TCP distributed portscan"; gid:122; sid:4; rev:1; )
+alert ( msg:"(port_scan) TCP filtered portscan"; gid:122; sid:5; rev:1; )
+alert ( msg:"(port_scan) TCP filtered decoy portscan"; gid:122; sid:6; rev:1; )
+alert ( msg:"(port_scan) TCP filtered portsweep"; gid:122; sid:7; rev:1; )
+alert ( msg:"(port_scan) TCP filtered distributed portscan"; gid:122; sid:8; rev:1; )
+alert ( msg:"(port_scan) IP protocol scan"; gid:122; sid:9; rev:1; )
+alert ( msg:"(port_scan) IP decoy protocol scan"; gid:122; sid:10; rev:1; )
+alert ( msg:"(port_scan) IP protocol sweep"; gid:122; sid:11; rev:1; )
+alert ( msg:"(port_scan) IP distributed protocol scan"; gid:122; sid:12; rev:1; )
+alert ( msg:"(port_scan) IP filtered protocol scan"; gid:122; sid:13; rev:1; )
+alert ( msg:"(port_scan) IP filtered decoy protocol scan"; gid:122; sid:14; rev:1; )
+alert ( msg:"(port_scan) IP filtered protocol sweep"; gid:122; sid:15; rev:1; )
+alert ( msg:"(port_scan) IP filtered distributed protocol scan"; gid:122; sid:16; rev:1; )
+alert ( msg:"(port_scan) UDP portscan"; gid:122; sid:17; rev:1; )
+alert ( msg:"(port_scan) UDP decoy portscan"; gid:122; sid:18; rev:1; )
+alert ( msg:"(port_scan) UDP portsweep"; gid:122; sid:19; rev:1; )
+alert ( msg:"(port_scan) UDP distributed portscan"; gid:122; sid:20; rev:1; )
+alert ( msg:"(port_scan) UDP filtered portscan"; gid:122; sid:21; rev:1; )
+alert ( msg:"(port_scan) UDP filtered decoy portscan"; gid:122; sid:22; rev:1; )
+alert ( msg:"(port_scan) UDP filtered portsweep"; gid:122; sid:23; rev:1; )
+alert ( msg:"(port_scan) UDP filtered distributed portscan"; gid:122; sid:24; rev:1; )
+alert ( msg:"(port_scan) ICMP sweep"; gid:122; sid:25; rev:1; )
+alert ( msg:"(port_scan) ICMP filtered sweep"; gid:122; sid:26; rev:1; )
+
 
 alert http any any -> any any ( msg:"NIDS SQL injection attempt (UNION SELECT)"; http_uri; content:"union",nocase; content:"select",nocase,distance 0; classtype:web-application-attack; sid:9000001; rev:1; )
 alert http any any -> any any ( msg:"NIDS SQL injection attempt (OR 1=1)"; http_uri; content:"' or 1=1",nocase; classtype:web-application-attack; sid:9000002; rev:1; )

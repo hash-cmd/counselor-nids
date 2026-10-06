@@ -43,6 +43,17 @@ def models_dir() -> Path:
     return settings.NIDS_ROOT / "models"
 
 
+def models_for(kind: str) -> list[Path]:
+    """Detectors for a replay. Packet captures go through the Python flow meter, like live
+    traffic, so they use the live detectors (trained on its features) when present;
+    flow records use the detectors trained on the published CSVs."""
+    if kind == "pcap":
+        live = sorted((models_dir() / "live").glob("*.joblib"))
+        if live:
+            return live
+    return sorted(models_dir().glob("*.joblib"))
+
+
 def snort_available() -> bool:
     return shutil.which("snort") is not None
 
@@ -54,10 +65,20 @@ def _files() -> dict[str, tuple[str, Path]]:
     return files
 
 
+def _description(path: Path) -> str | None:
+    """Optional one-line description in <file>.txt next to the capture."""
+    note = path.with_name(path.name + ".txt")
+    return note.read_text().strip() if note.exists() else None
+
+
 def available() -> dict:
-    replays = [{"name": name, "kind": kind, "size_mb": round(path.stat().st_size / 1e6, 1)}
+    replays = [{"name": name, "kind": kind, "size_mb": round(path.stat().st_size / 1e6, 1),
+                "description": _description(path)}
                for name, (kind, path) in _files().items()]
+    # real traffic first: it is the honest demo of the ML
+    replays.sort(key=lambda r: (r["kind"] != "pcap", not r["name"].startswith("real"), r["name"]))
     return {"replays": replays, "models": sorted(p.stem for p in models_dir().glob("*.joblib")),
+            "live_models": [p.stem for p in models_for("pcap")] if (models_dir() / "live").is_dir() else [],
             "snort": snort_available()}
 
 
@@ -97,7 +118,7 @@ class ReplayManager:
             snort = snort and kind == "pcap"
             if snort and not snort_available():
                 raise ReplayError("Snort is not installed on the API host")
-            models = sorted(models_dir().glob("*.joblib"))
+            models = models_for(kind)
             if not models:
                 raise ReplayError("no trained models: run `nids train scenario2` first")
 

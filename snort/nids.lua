@@ -26,7 +26,10 @@ ftp_client = { }
 ftp_data = { }
 
 -- Scans: the classic thing a signature IDS sees that per-flow ML features miss.
+-- DNS servers answering many lookups look like a "UDP filtered portscan" to Snort,
+-- so scan reports whose source is port 53 are ignored.
 port_scan = default_med_port_scan
+port_scan.ignore_scanners = '0.0.0.0/0#53'  -- CIDR#port
 
 wizard = default_wizard
 binder =
@@ -42,7 +45,9 @@ binder =
 local rules_dir = os.getenv('NIDS_SNORT_RULES') or 'snort/rules'
 ips =
 {
-    enable_builtin_rules = true,  -- inspector alerts, e.g. port_scan (gid 122)
+    -- Inspectors' built-in alerts are mostly protocol anomalies (e.g. a TLS session seen
+    -- from the middle), not attacks; nids.rules turns on just the port-scan ones (gid 122).
+    enable_builtin_rules = false,
     include = rules_dir .. '/nids.rules',
     variables = default_variables,
 }

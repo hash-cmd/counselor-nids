@@ -170,7 +170,7 @@ class ReplayTests(LoggedInTestCase):
     def test_lists_replays_and_models(self):
         (self.root / "models" / "detector1.joblib").write_bytes(b"")
         body = self.client.get("/api/replay/").json()
-        self.assertEqual(body["replays"], [{"name": "demo.csv", "kind": "flows", "size_mb": 0.0}])
+        self.assertEqual(body["replays"], [{"name": "demo.csv", "kind": "flows", "size_mb": 0.0, "description": None}])
         self.assertEqual(body["models"], ["detector1"])
         self.assertEqual(body["status"], {"state": "idle"})
 
@@ -239,7 +239,7 @@ class ReplayTests(LoggedInTestCase):
         with mock.patch("monitoring.replay.Popen", self.fake_popen(started)), \
                 mock.patch("monitoring.replay.snort_available", return_value=True):
             listed = self.client.get("/api/replay/").json()
-            self.assertIn({"name": "attack.pcap", "kind": "pcap", "size_mb": 0.0}, listed["replays"])
+            self.assertIn({"name": "attack.pcap", "kind": "pcap", "size_mb": 0.0, "description": None}, listed["replays"])
             self.assertTrue(listed["snort"])
 
             body = self.client.post("/api/replay/start/", {"replay": "attack.pcap"}, format="json").json()
@@ -250,6 +250,27 @@ class ReplayTests(LoggedInTestCase):
             self.assertTrue(self.redis.exists(bus.SNORT_ACTIVE))  # detectors wait for Snort
             self.client.post("/api/replay/stop/")
             self.assertFalse(self.redis.exists(bus.SNORT_ACTIVE))
+
+    def test_pcap_replay_uses_live_detectors_when_present(self):
+        (self.root / "models" / "detector1.joblib").write_bytes(b"")
+        (self.root / "models" / "live").mkdir()
+        (self.root / "models" / "live" / "live_dos.joblib").write_bytes(b"")
+        (self.root / "data" / "pcap").mkdir(parents=True)
+        (self.root / "data" / "pcap" / "attack.pcap").write_bytes(b"")
+        started = []
+        with mock.patch("monitoring.replay.Popen", self.fake_popen(started)), \
+                mock.patch("monitoring.replay.snort_available", return_value=False):
+            self.assertEqual(self.client.get("/api/replay/").json()["live_models"], ["live_dos"])
+            self.client.post("/api/replay/start/", {"replay": "attack.pcap", "snort": False}, format="json")
+            detect = [p.command[4] for p in started if p.command[3] == "detect"]
+            self.assertEqual(detect, [str(self.root / "models" / "live" / "live_dos.joblib")])
+            self.client.post("/api/replay/stop/")
+
+            started.clear()  # flow records keep the CSV-trained detectors
+            self.client.post("/api/replay/start/", {"replay": "demo.csv"}, format="json")
+            detect = [p.command[4] for p in started if p.command[3] == "detect"]
+            self.assertEqual(detect, [str(self.root / "models" / "detector1.joblib")])
+            self.client.post("/api/replay/stop/")
 
     def test_pcap_replay_without_snort_installed(self):
         (self.root / "models" / "detector1.joblib").write_bytes(b"")
@@ -290,3 +311,22 @@ class IncidentsTests(LoggedInTestCase):
         self.assertEqual(body["total"], 1)
         self.assertEqual(body["incidents"][0]["label"], "DDoS")
         self.assertEqual(self.client.get("/api/incidents/?source=nope").status_code, 400)
+
+
+class ByLabelResultsTests(LoggedInTestCase):
+    def test_by_label_tables(self):
+        with tempfile.TemporaryDirectory() as root:
+            folder = Path(root) / "results" / "coverage"
+            folder.mkdir(parents=True)
+            (folder / "cse2018_by_label.csv").write_text(
+                ",flows,detectors 1+2,detectors 1+2+3\nBenign,100,0.05,0.05\nBot,50,0.0,0.99\n")
+            (folder / "summary.json").write_text(json.dumps(
+                {"cse2018": {"detectors 1+2": {"accuracy": 0.3}}}))
+            with override_settings(NIDS_ROOT=Path(root)):
+                body = self.client.get("/api/results/").json()["by_label"]
+        table = body["coverage_cse2018"]
+        self.assertEqual(table["series"], ["detectors 1+2", "detectors 1+2+3"])
+        self.assertEqual(table["rows"][1], {"label": "Bot", "flows": 50,
+                                            "flagged": {"detectors 1+2": 0.0, "detectors 1+2+3": 0.99}})
+        self.assertEqual(table["summary"]["detectors 1+2"]["accuracy"], 0.3)
+        self.assertNotIn("live", body)
