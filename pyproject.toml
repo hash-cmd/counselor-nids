@@ -17,7 +17,7 @@ service = ["redis[hiredis]"]
 live = ["redis[hiredis]", "cicflowmeter"]
 web = [
     "redis[hiredis]", "django", "djangorestframework", "djangorestframework-simplejwt",
-    "django-cors-headers", "channels", "daphne", "python-decouple",
+    "django-cors-headers", "channels", "daphne", "python-decouple", "whitenoise",
 ]
 dev = ["pytest", "jupyterlab", "nbconvert", "fakeredis", "nids[web]"]
 

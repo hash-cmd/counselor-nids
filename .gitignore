@@ -27,3 +27,6 @@ backend/.env
 
 # start.sh
 logs/
+
+# docker-compose secrets
+/.env

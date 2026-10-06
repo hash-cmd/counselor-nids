@@ -22,6 +22,14 @@ class LiveFeedTests(FakeRedisMixin, TransactionTestCase):
         return WebsocketCommunicator(application, f"/ws/live/{query}",
                                      headers=[(b"origin", b"http://localhost")])
 
+    async def test_accepts_access_cookie(self):
+        cookie = f"nids_access={AccessToken.for_user(self.user)}".encode()
+        ws = WebsocketCommunicator(application, "/ws/live/",
+                                   headers=[(b"origin", b"http://localhost"), (b"cookie", cookie)])
+        connected, _ = await ws.connect()
+        self.assertTrue(connected)
+        await ws.disconnect()
+
     async def test_rejects_missing_or_bad_token(self):
         for token in (None, "not-a-jwt"):
             connected, code = await self.communicator(token).connect()

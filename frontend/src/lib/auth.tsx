@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
-import { api, login as loginRequest, tokens } from "./api";
+import { api, login as loginRequest, logout as logoutRequest } from "./api";
 
 type Session = { state: "loading" } | { state: "signed-out" } | { state: "signed-in"; username: string };
 
@@ -15,20 +15,18 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** The session cookie is httpOnly, so ask the API who we are. */
 async function resolveSession(): Promise<Session> {
-  if (!tokens.access()) return { state: "signed-out" };
   try {
     const { username } = await api<{ username: string }>("/auth/me/");
     return { state: "signed-in", username };
   } catch {
-    tokens.clear();
     return { state: "signed-out" };
   }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  // Tokens live in localStorage, which the server cannot read: start in "loading"
-  // on both server and client so hydration matches, then resolve in an effect.
+  // Start in "loading" on both server and client so hydration matches, then ask the API.
   const [session, setSession] = useState<Session>({ state: "loading" });
 
   useEffect(() => {
@@ -42,14 +40,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
-    await loginRequest(username, password);
-    const me = await api<{ username: string }>("/auth/me/");
-    setSession({ state: "signed-in", username: me.username });
+    const name = await loginRequest(username, password);
+    setSession({ state: "signed-in", username: name });
   }, []);
 
   const logout = useCallback(() => {
-    tokens.clear();
     setSession({ state: "signed-out" });
+    void logoutRequest();
   }, []);
 
   return <AuthContext.Provider value={{ session, login, logout }}>{children}</AuthContext.Provider>;

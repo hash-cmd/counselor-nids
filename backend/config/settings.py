@@ -3,6 +3,7 @@
 from datetime import timedelta
 from pathlib import Path
 
+from corsheaders.defaults import default_headers
 from decouple import Csv, config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -10,8 +11,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 NIDS_ROOT = Path(config("NIDS_ROOT", default=str(BASE_DIR.parent)))
 NIDS_REDIS_URL = config("NIDS_REDIS_URL", default="redis://localhost:6379/0")
 
-SECRET_KEY = config("DJANGO_SECRET_KEY", default="dev-only-insecure-key-change-me-in-production")
 DEBUG = config("DJANGO_DEBUG", default=True, cast=bool)
+_DEV_KEY = "dev-only-insecure-key-change-me-in-production"
+SECRET_KEY = config("DJANGO_SECRET_KEY", default=_DEV_KEY)
+if not DEBUG and (SECRET_KEY == _DEV_KEY or len(SECRET_KEY) < 32):
+    raise RuntimeError("Set DJANGO_SECRET_KEY to a random value of 32+ characters when DJANGO_DEBUG=0")
 ALLOWED_HOSTS = config("DJANGO_ALLOWED_HOSTS", default="localhost,127.0.0.1", cast=Csv())
 
 INSTALLED_APPS = [
@@ -31,6 +35,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # serves admin static files without DEBUG
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -75,8 +80,9 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework_simplejwt.authentication.JWTAuthentication"],
+    "DEFAULT_AUTHENTICATION_CLASSES": ["monitoring.authentication.CookieJWTAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "DEFAULT_THROTTLE_RATES": {"login": config("LOGIN_RATE", default="10/min")},
 }
 
 SIMPLE_JWT = {
@@ -85,6 +91,27 @@ SIMPLE_JWT = {
 }
 
 CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default="http://localhost:3000", cast=Csv())
+CORS_ALLOW_CREDENTIALS = True  # the auth cookies
+CORS_ALLOW_HEADERS = [*default_headers, "x-nids-client"]
+
+# Auth cookies are Secure (HTTPS only) unless running in debug on plain http.
+AUTH_COOKIE_SECURE = config("AUTH_COOKIE_SECURE", default=not DEBUG, cast=bool)
+
+if not DEBUG:
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = "same-origin"
+    X_FRAME_OPTIONS = "DENY"
+    SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = AUTH_COOKIE_SECURE
+    SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=False, cast=bool)
+    SECURE_HSTS_SECONDS = config("SECURE_HSTS_SECONDS", default=0, cast=int)
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "root": {"handlers": ["console"], "level": "WARNING"},
+}
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"

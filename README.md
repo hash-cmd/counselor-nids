@@ -14,6 +14,7 @@ learns from the answer.
 ./start.sh                    # dashboard on http://localhost:3000 — start replays from the browser
 ./start.sh live eth0          # Snort + ML on a network interface, plus the dashboard (asks for sudo)
 ./start.sh live capture.pcap  # the same on a recorded capture
+./start.sh --prod             # production servers (Daphne, optimised build, DEBUG off); also: --prod live wlan0
 ```
 
 Needs Python 3.11+, Node, Redis (started for you if installed but not running) and, for the
@@ -157,14 +158,15 @@ detector services --Redis--> Django API (DRF + Channels) --REST + WebSocket--> N
 
 | API | |
 |---|---|
-| `POST /api/auth/token/`, `/api/auth/token/refresh/` | JWT login (simplejwt) |
+| `POST /api/auth/login/`, `/refresh/`, `/logout/` | dashboard login: sets / renews / clears httpOnly cookies |
+| `POST /api/auth/token/`, `/api/auth/token/refresh/` | JWT tokens for scripts (Bearer header) |
 | `GET /api/auth/me/` | current user |
 | `GET /api/detectors/` | live counters per detector + replay state |
 | `GET /api/alerts/?limit=&after=` | latest attack decisions |
 | `GET /api/incidents/?source=&q=&limit=&offset=` | flagged flows with ML and Snort verdicts, over the full history |
 | `GET /api/results/` | experiment comparisons and self-learning curves |
 | `GET /api/replay/`, `POST /api/replay/start/`, `POST /api/replay/stop/` | replay control |
-| `ws://…/ws/live/?token=<access>` | stats every second, new alerts, reset on a new replay |
+| `ws://…/ws/live/` | stats every second, new alerts, reset on a new replay (cookie, or `?token=` for scripts) |
 
 The API starts a replay by launching the Observer, one detector service per model in `models/`
 and an Extractor as subprocesses — the same services as the command line.
@@ -182,10 +184,20 @@ cd ../frontend && npm install && npm run dev   # dashboard on :3000
 **With Docker:**
 
 ```bash
+echo "DJANGO_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(50))')" > .env
 docker-compose run --rm train
 docker-compose run --rm api python manage.py createsuperuser
 docker-compose up                     # dashboard on http://localhost:3000
 ```
+
+**Security.** The session lives in httpOnly, SameSite=Strict cookies (JavaScript never sees a
+token); state-changing requests also need an `X-NIDS-Client` header; login is limited to 10
+attempts a minute per client (`LOGIN_RATE`). With `DJANGO_DEBUG=0` the API refuses to start
+without a real `DJANGO_SECRET_KEY` (32+ characters) and sends security headers. Serving beyond
+localhost: put an HTTPS reverse proxy in front and set `AUTH_COOKIE_SECURE=1`,
+`SECURE_SSL_REDIRECT=1`, `SECURE_HSTS_SECONDS`, `DJANGO_ALLOWED_HOSTS` and
+`CORS_ALLOWED_ORIGINS`. Docker needs `DJANGO_SECRET_KEY` in a `.env` file next to
+`docker-compose.yml`. Scripts can still use `POST /api/auth/token/` and a Bearer header.
 
 Backend settings come from environment variables (or `backend/.env`): `DJANGO_SECRET_KEY`,
 `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `NIDS_REDIS_URL`, `NIDS_ROOT`,

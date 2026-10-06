@@ -1,9 +1,13 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from . import views
+from . import auth, views
 
 urlpatterns = [
+    path("auth/login/", auth.LoginView.as_view(), name="login"),
+    path("auth/refresh/", auth.RefreshView.as_view(), name="refresh"),
+    path("auth/logout/", auth.LogoutView.as_view(), name="logout"),
+    # header-based tokens for scripts and the command line
     path("auth/token/", TokenObtainPairView.as_view(), name="token"),
     path("auth/token/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
     path("auth/me/", views.MeView.as_view(), name="me"),

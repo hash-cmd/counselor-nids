@@ -8,6 +8,8 @@
 #   ./start.sh live eth0          live: Snort + ML detectors on a network interface, plus the
 #                                 dashboard (asks for sudo once: capturing needs root)
 #   ./start.sh live file.pcap     the same on a recorded capture (no sudo)
+#   ./start.sh --prod [live ...]  the same on production servers: Daphne for the API,
+#                                 an optimised Next.js build, DEBUG off, a generated secret key
 #
 # Ctrl+C stops everything. Logs go to logs/.
 set -euo pipefail
@@ -20,6 +22,7 @@ LOGS="$ROOT/logs"
 API_PORT="${API_PORT:-8000}"
 WEB_PORT="${WEB_PORT:-3000}"
 export NIDS_REDIS_URL="${NIDS_REDIS_URL:-redis://localhost:6379/0}"
+PROD=0
 mkdir -p "$LOGS"
 
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
@@ -106,13 +109,34 @@ start_dashboard() {
     say "no dashboard login yet — create one"
     (cd backend && "$PY" manage.py createsuperuser)
   fi
-  say "starting API on :$API_PORT and dashboard on :$WEB_PORT"
-  CORS_ALLOWED_ORIGINS="http://localhost:$WEB_PORT" \
+  export CORS_ALLOWED_ORIGINS="http://localhost:$WEB_PORT" NEXT_PUBLIC_API_URL="http://localhost:$API_PORT"
+  if (( PROD )); then
+    prepare_prod
+    say "starting API (Daphne) on :$API_PORT and dashboard (production build) on :$WEB_PORT"
+    run_service api bash -c "cd backend && exec '$ROOT/.venv/bin/daphne' -b 127.0.0.1 -p $API_PORT config.asgi:application"
+    run_service web bash -c "cd frontend && exec npx next start -p $WEB_PORT"
+  else
+    say "starting API on :$API_PORT and dashboard on :$WEB_PORT"
     run_service api bash -c "cd backend && exec '$PY' manage.py runserver 127.0.0.1:$API_PORT --noreload"
-  NEXT_PUBLIC_API_URL="http://localhost:$API_PORT" \
     run_service web bash -c "cd frontend && exec npx next dev -p $WEB_PORT"
+  fi
   wait_http "http://127.0.0.1:$API_PORT/api/auth/me/" "API"
   wait_http "http://localhost:$WEB_PORT/login" "dashboard"
+}
+
+prepare_prod() {
+  # A secret key generated once and kept in backend/.env (git-ignored, owner-only).
+  if ! grep -q '^DJANGO_SECRET_KEY=' backend/.env 2>/dev/null; then
+    say "generating a secret key in backend/.env"
+    (umask 077; printf 'DJANGO_SECRET_KEY=%s\n' "$("$PY" -c 'import secrets; print(secrets.token_urlsafe(50))')" >> backend/.env)
+  fi
+  export DJANGO_DEBUG=0
+  # Secure cookies need HTTPS; locally the dashboard is plain http. Put a TLS proxy in
+  # front and set AUTH_COOKIE_SECURE=1 when serving to other machines.
+  export AUTH_COOKIE_SECURE="${AUTH_COOKIE_SECURE:-0}"
+  (cd backend && "$PY" manage.py collectstatic --noinput -v 0)
+  say "building the dashboard (production)"
+  (cd frontend && npx next build >"$LOGS/web-build.log" 2>&1) || die "dashboard build failed (see logs/web-build.log)"
 }
 
 watch() {  # keep running until Ctrl+C or a service dies
@@ -222,10 +246,15 @@ cmd_live() {
   watch
 }
 
+if [[ "${1:-}" == "--prod" ]]; then
+  PROD=1
+  shift
+fi
+
 case "${1:-}" in
   setup) cmd_setup ;;
   live) shift; cmd_live "$@" ;;
   ""|dashboard) cmd_dashboard ;;
-  -h|--help|help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' ;;
+  -h|--help|help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) die "unknown command '$1' — see ./start.sh --help" ;;
 esac

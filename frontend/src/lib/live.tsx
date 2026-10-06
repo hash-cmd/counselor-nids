@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
 
-import { refreshAccess, tokens, WS_URL } from "./api";
+import { api, ApiError, WS_URL } from "./api";
 import type { Activity, Alert, Breakdown, DetectorStats, ReplayStatus, SnortAlert, SnortSummary } from "./types";
 
 const MAX_ALERTS = 500;
@@ -43,21 +43,16 @@ const initial: LiveState = {
   sampleRate: [],
 };
 
-function secondsUntilExpiry(token: string | null): number {
-  if (!token) return -1;
-  try {
-    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-    return payload.exp - Date.now() / 1000;
-  } catch {
-    return -1;
-  }
-}
-
 /** A rejected WebSocket handshake reaches the browser only as a generic close, so
- *  refresh the access token *before* connecting when it is about to expire. */
-async function freshToken(): Promise<string | null> {
-  if (secondsUntilExpiry(tokens.access()) < 30 && !(await refreshAccess())) return null;
-  return tokens.access();
+ *  check the session first: this renews an expired access cookie, and the handshake
+ *  then carries a valid one. */
+async function sessionValid(): Promise<boolean> {
+  try {
+    await api("/auth/me/");
+    return true;
+  } catch (e) {
+    return !(e instanceof ApiError && e.status === 401); // network trouble: retry the socket
+  }
 }
 
 type Snapshot = { time: number; values: Record<string, number> };
@@ -92,13 +87,13 @@ function useLiveFeed(onSessionEnd: () => void): LiveState {
     let previous: { flagged: Snapshot; samples: Snapshot; detections: Snapshot } | null = null;
 
     async function connect() {
-      const token = await freshToken();
+      const valid = await sessionValid();
       if (closed) return;
-      if (!token) {
+      if (!valid) {
         sessionEnded();
         return;
       }
-      socket = new WebSocket(`${WS_URL}/ws/live/?token=${encodeURIComponent(token)}`);
+      socket = new WebSocket(`${WS_URL}/ws/live/`); // the access cookie authenticates it
 
       socket.onopen = () => {
         attempts = 0;

@@ -53,6 +53,51 @@ class AuthTests(FakeRedisMixin, TestCase):
         self.assertEqual(response.status_code, 401)
 
 
+class CookieAuthTests(FakeRedisMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        get_user_model().objects.create_user("analyst", password="s3cret-pass")
+        self.client = APIClient()
+        from django.core.cache import cache
+        cache.clear()  # login throttle counts live in the cache
+
+    def login(self):
+        return self.client.post("/api/auth/login/", {"username": "analyst", "password": "s3cret-pass"}, format="json")
+
+    def test_login_sets_httponly_cookies_and_no_tokens_in_body(self):
+        response = self.login()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"username": "analyst"})
+        for name in ("nids_access", "nids_refresh"):
+            cookie = response.cookies[name]
+            self.assertTrue(cookie["httponly"])
+            self.assertEqual(cookie["samesite"], "Strict")
+        self.assertEqual(self.client.get("/api/auth/me/").json(), {"username": "analyst"})
+
+    def test_writes_with_cookie_need_client_header(self):
+        self.login()
+        self.assertEqual(self.client.post("/api/replay/stop/").status_code, 403)
+        # with the header the request is authenticated (409: nothing to stop)
+        self.assertEqual(self.client.post("/api/replay/stop/", HTTP_X_NIDS_CLIENT="web").status_code, 409)
+
+    def test_refresh_and_logout(self):
+        self.login()
+        self.client.cookies.pop("nids_access")
+        self.assertEqual(self.client.get("/api/auth/me/").status_code, 401)
+        self.assertEqual(self.client.post("/api/auth/refresh/").status_code, 200)
+        self.assertEqual(self.client.get("/api/auth/me/").status_code, 200)
+
+        logout = self.client.post("/api/auth/logout/")
+        self.assertEqual(logout.cookies["nids_access"].value, "")
+        self.assertEqual(self.client.get("/api/auth/me/").status_code, 401)
+        self.assertEqual(self.client.post("/api/auth/refresh/").status_code, 401)
+
+    def test_login_is_rate_limited(self):
+        for _ in range(10):
+            self.client.post("/api/auth/login/", {"username": "analyst", "password": "wrong"}, format="json")
+        self.assertEqual(self.login().status_code, 429)
+
+
 class LoggedInTestCase(FakeRedisMixin, TestCase):
     def setUp(self):
         super().setUp()
