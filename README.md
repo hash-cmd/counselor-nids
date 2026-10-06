@@ -25,4 +25,5 @@ Datasets go in `data/raw/` — see [data/README.md](data/README.md).
 | `src/nids/detector/` | Classifier selection and detection (Algorithms 1 & 2) |
 | `src/nids/counselor/` | Advice exchange between detectors |
 | `experiments/` | Scripts reproducing the paper's Scenario 1 and 2 |
+| `notebooks/` | Exploration only — imports the loaders, holds no cleaning logic (`jupyter lab`) |
 | `tests/` | pytest suite |

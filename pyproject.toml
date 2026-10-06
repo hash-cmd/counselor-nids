@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "jupyterlab", "nbconvert"]
 
 [build-system]
 requires = ["setuptools>=68"]
