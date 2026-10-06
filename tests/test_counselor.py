@@ -1,6 +1,8 @@
+from sklearn.dummy import DummyClassifier
+
 from nids.counselor import CounselorNetwork
 
-from .test_detector import accurate, split_brain
+from .test_detector import accurate, make_detector, split_brain
 
 
 def test_conflicts_resolved_by_counselor_advice(blobs):
@@ -53,3 +55,32 @@ def test_conflicted_counselor_gives_no_advice(blobs):
 
     # "bad" conflicts on everything, so it has no unambiguous history to advise from
     assert (results["counselor"] == "good").all()
+
+
+def always(df, name, attack):
+    """Detector that is never conflicted and always says attack (or normal)."""
+    return make_detector(df, name, {"c": DummyClassifier(strategy="constant", constant=attack)})
+
+
+def test_cross_check_flips_normal_verdicts_to_attack_only(blobs):
+    blind, alarm = always(blobs, "blind", False), always(blobs, "alarm", True)
+    network = CounselorNetwork([blind, alarm], min_accuracy=0.0, window=0, cross_check_normal=True)
+
+    results = network.run(blobs, blobs["record_id"])
+
+    assert (results["blind"]["resolution"] == "cross_check").all()
+    assert results["blind"]["prediction"].all()
+    # attack verdicts are never cross-checked, so "alarm" keeps its own answers
+    assert (results["alarm"]["resolution"] == "unanimous").all()
+
+
+def test_cross_check_is_off_by_default(blobs):
+    blind, alarm = always(blobs, "blind", False), always(blobs, "alarm", True)
+    results = CounselorNetwork([blind, alarm], min_accuracy=0.0, window=0).run(blobs, blobs["record_id"])
+    assert not results["blind"]["prediction"].any()
+
+
+def test_cross_check_respects_min_accuracy(blobs):
+    blind, alarm = always(blobs, "blind", False), always(blobs, "alarm", True)
+    network = CounselorNetwork([blind, alarm], min_accuracy=0.99, window=0, cross_check_normal=True)
+    assert not network.run(blobs, blobs["record_id"])["blind"]["prediction"].any()

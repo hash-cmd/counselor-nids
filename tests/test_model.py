@@ -56,3 +56,11 @@ def test_preprocessor_one_hot_encodes_and_drops_constant_columns():
     df = pd.DataFrame({"proto": ["tcp", "udp", "tcp"], "bytes": [1.0, 5.0, 9.0], "zero": [0.0, 0.0, 0.0]})
     Xt = build_preprocessor(categorical=["proto"]).fit_transform(df)
     assert Xt.shape == (3, 3)  # tcp, udp, bytes — "zero" dropped
+
+
+def test_reselect_changes_selection_without_retraining(blobs):
+    model = fit_model(blobs, alpha=0.001)
+    tree = model.classifiers["tree"]
+    assert model.reselect(1.0).clusters[0].selected == ["tree", "always_attack"]
+    assert model.reselect(0.0).clusters[0].selected == ["tree"]
+    assert model.classifiers["tree"] is tree

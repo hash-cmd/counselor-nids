@@ -18,7 +18,9 @@ RESULTS_DIR = PROJECT_ROOT / "results"
 
 # Approaches shown in the paper's Figures 3 and 4, in order.
 FIGURE_ROWS = {
-    "proposed": "Proposed solution",
+    "proposed_cross_check": "Proposed + cross-check (ours)",
+    "proposed": "Proposed solution (paper)",
+    "any_detector_attack": "Any detector says attack",
     "best_local": "Best local",
     "majority_voting": "Majority voting",
     "weighted_voting": "Weighted voting",

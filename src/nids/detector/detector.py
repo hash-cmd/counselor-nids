@@ -79,15 +79,32 @@ class Detector:
         Looks at unambiguous decisions in ``[timestamp - window, timestamp]`` and
         returns the one backed by the highest historical accuracy (latest on ties).
         """
-        ts = self._history["timestamp"].to_numpy()
-        lo = np.searchsorted(ts, timestamp - window, side="left")
-        hi = np.searchsorted(ts, timestamp, side="right")
-        if lo == hi:
+        found, prediction, confidence = self.advise_many(np.array([timestamp], dtype=float), window)
+        if not found[0]:
             return None
-        candidates = self._history.iloc[lo:hi]
-        best = candidates.iloc[::-1]["confidence"].idxmax()
-        return Advice(self.name, bool(candidates.at[best, "prediction"]),
-                      float(candidates.at[best, "confidence"]))
+        return Advice(self.name, bool(prediction[0]), float(confidence[0]))
+
+    def advise_many(self, timestamps: np.ndarray, window: float):
+        """Vectorised ``advise``: returns (found, prediction, confidence) arrays."""
+        ts = self._history["timestamp"].to_numpy()
+        predictions = self._history["prediction"].to_numpy(dtype=bool)
+        confidences = self._history["confidence"].to_numpy()
+        lo = np.searchsorted(ts, timestamps - window, side="left")
+        hi = np.searchsorted(ts, timestamps, side="right")
+        found = hi > lo
+
+        # Fast path: the latest entry in the window (exact when it holds one entry).
+        pick = np.where(found, hi - 1, 0)
+        for i in np.flatnonzero(hi - lo > 1):
+            span = confidences[lo[i]:hi[i]]
+            pick[i] = hi[i] - 1 - np.argmax(span[::-1])  # highest confidence, latest on ties
+
+        prediction = np.where(found, predictions[pick] if len(ts) else False, False)
+        confidence = np.where(found, confidences[pick] if len(ts) else 0.0, 0.0)
+        return found, prediction, confidence
+
+    def clear_history(self) -> None:
+        self._history = self._history.iloc[0:0]
 
     def learn(self, samples: pd.DataFrame, labels) -> None:
         """Store advised samples as new signatures (Figure 1, steps 8.A-C)."""

@@ -1,3 +1,5 @@
+import numpy as np
+import pandas as pd
 import pytest
 from sklearn.dummy import DummyClassifier
 from sklearn.tree import DecisionTreeClassifier
@@ -73,3 +75,20 @@ def test_retrain_with_learned_signatures(blobs, n):
     assert detector.retrain() == n
     assert len(detector.model.train_data[0]) == 300 + n
     assert detector.new_signatures == []
+
+
+def test_advise_picks_most_confident_entry_in_window(blobs):
+    detector = accurate(blobs)
+    detector._remember(pd.DataFrame({
+        "timestamp": [1.0, 2.0, 3.0], "prediction": [True, False, True], "confidence": [0.7, 0.99, 0.8]}))
+    found, prediction, confidence = detector.advise_many(np.array([3.0, 0.5, 1.0]), window=2)
+    assert list(found) == [True, False, True]
+    assert prediction[0] == False and confidence[0] == 0.99  # noqa: E712
+    assert prediction[2] == True and confidence[2] == 0.7  # noqa: E712
+
+
+def test_clear_history(blobs):
+    detector = accurate(blobs)
+    detector.detect(blobs, blobs["record_id"])
+    detector.clear_history()
+    assert detector.advise(timestamp=10, window=0) is None

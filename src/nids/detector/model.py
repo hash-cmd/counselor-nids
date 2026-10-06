@@ -65,9 +65,15 @@ class DetectorModel:
                 name: float(np.mean(p[in_cluster] == y_eval[in_cluster]))
                 for name, p in predictions.items()
             }
-            best = max(accuracy.values())
-            selected = [name for name, a in accuracy.items() if a >= best - self.alpha - 1e-12]
-            self.clusters.append(ClusterProfile(accuracy, selected, int(in_cluster.sum())))
+            self.clusters.append(ClusterProfile(accuracy, [], int(in_cluster.sum())))
+        return self.reselect(self.alpha)
+
+    def reselect(self, alpha: float) -> "DetectorModel":
+        """Re-run classifier selection with a new alpha; no retraining needed."""
+        self.alpha = alpha
+        for profile in self.clusters:
+            best = max(profile.accuracy.values())
+            profile.selected = [n for n, a in profile.accuracy.items() if a >= best - alpha - 1e-12]
         return self
 
     def refit(self, X_extra: pd.DataFrame, y_extra) -> "DetectorModel":

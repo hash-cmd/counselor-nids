@@ -40,9 +40,9 @@ def baseline_predictions(detector: Detector, samples: pd.DataFrame) -> dict[str,
     }
 
 
-def compare(detector: Detector, samples: pd.DataFrame, final: pd.DataFrame, y_true) -> pd.DataFrame:
-    """Metrics of the proposed solution vs. every baseline, one row per approach."""
-    rows = {"proposed": metrics(y_true, final["prediction"])}
+def compare(detector: Detector, samples: pd.DataFrame, finals: dict[str, pd.DataFrame], y_true) -> pd.DataFrame:
+    """Metrics of each proposed variant (``finals``: name -> results) vs. every baseline."""
+    rows = {name: metrics(y_true, final["prediction"]) for name, final in finals.items()}
     rows |= {name: metrics(y_true, p) for name, p in baseline_predictions(detector, samples).items()}
     table = pd.DataFrame(rows).T
 
@@ -60,9 +60,10 @@ def conflict_summary(final: pd.DataFrame, y_true=None) -> dict[str, int]:
         "conflicts": int(final["conflict"].sum()),
         "resolved_by_advice": int(counts.get("advice", 0)),
         "fallback": int(counts.get("fallback", 0)),
+        "cross_check_overrides": int(counts.get("cross_check", 0)),
     }
     if y_true is not None:
         correct = final["prediction"].to_numpy(dtype=bool) == np.asarray(y_true, dtype=bool)
-        for resolution in ("advice", "fallback"):
+        for resolution in ("advice", "fallback", "cross_check"):
             summary[f"{resolution}_correct"] = int(correct[final["resolution"] == resolution].sum())
     return summary
