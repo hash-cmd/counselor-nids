@@ -5,32 +5,32 @@ import { DetectorTiles } from "@/components/panels/detector-tiles";
 import { RateChart } from "@/components/charts/rate-chart";
 import { seriesColor } from "@/lib/format";
 import { useLive } from "@/lib/live-feed";
+import { detectorName } from "@/lib/plain";
 
 export default function DetectorsPage() {
   const live = useLive();
   const detectors = Object.keys(live.detectors).sort();
-  const perDetector = detectors.map((d) => ({ key: d, name: d, color: seriesColor(d, detectors) }));
+  const perDetector = detectors.map((d) => ({ key: d, name: detectorName(d), color: seriesColor(d, detectors) }));
   // Every detector analyses the same stream, so throughput is one stream-level series.
   const streamRate = live.sampleRate.map((p) => ({ time: p.time, stream: Math.max(0, ...detectors.map((d) => p[d] ?? 0)) }));
 
   return (
     <>
-      <div>
-        <h1 className="text-xl font-semibold text-ink">Detectors</h1>
-        <p className="text-sm text-ink-2">
-          Each ML detector, how it decided, and how often it needed its counselors.
-        </p>
-      </div>
+      <p className="max-w-3xl text-sm text-ink-2">
+        The AI is a team of specialists. Each detector learned to recognise certain kinds of attack and checks
+        every connection. When a detector is unsure, it asks the others for advice, like asking a colleague, and
+        learns from the answer.
+      </p>
       <DetectorTiles detectors={live.detectors} />
       <div className="grid gap-4 lg:grid-cols-3">
         <RateChart
-          title="Flows analysed per second"
-          subtitle="Whole stream"
+          title="Connections checked per second"
+          subtitle="How busy the system is"
           points={streamRate}
-          series={[{ key: "stream", name: "Flows analysed", color: "var(--ink-secondary)" }]}
+          series={[{ key: "stream", name: "Connections checked", color: "var(--ink-secondary)" }]}
         />
         <div className="lg:col-span-2">
-          <RateChart title="Attacks flagged per second" subtitle="Per detector, same scale" points={live.flaggedRate} series={perDetector} />
+          <RateChart title="Attacks flagged per second" subtitle="By each detector, on the same scale" points={live.flaggedRate} series={perDetector} />
         </div>
       </div>
       <DecisionsChart detectors={live.detectors} />

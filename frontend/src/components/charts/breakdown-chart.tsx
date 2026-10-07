@@ -6,29 +6,31 @@ import { count, percent } from "@/lib/format";
 
 import { axisProps, Card, DataTable, TooltipBox, useViewToggle } from "@/components/ui/chart-parts";
 
-/** Rule names all start with "NIDS"; drop it and keep one line. */
+/** Keep axis labels on one line. */
 function shortName(name: string): string {
-  const short = name.replace(/^NIDS /, "");
-  return short.length > 36 ? `${short.slice(0, 35)}…` : short;
+  return name.length > 36 ? `${name.slice(0, 35)}…` : name;
 }
 
-/** Counts per category, largest first. One measure, so one colour for every bar. */
+/** Counts per category, largest first. One measure, so one colour for every bar.
+ *  ``format`` turns raw category names into readable ones. */
 export function BreakdownChart({
   title,
   subtitle,
   counts,
   color,
   empty,
+  format = (name) => name,
 }: {
   title: string;
   subtitle: string;
   counts: Record<string, number>;
   color: string;
   empty: string;
+  format?: (name: string) => string;
 }) {
   const { view, toggle } = useViewToggle();
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
-  const rows = Object.entries(counts).map(([name, value]) => ({ name, value, share: total ? value / total : 0 }));
+  const rows = Object.entries(counts).map(([name, value]) => ({ name: format(name), value, share: total ? value / total : 0 }));
 
   return (
     <Card title={title} subtitle={subtitle} actions={rows.length ? toggle : undefined}>
@@ -36,7 +38,7 @@ export function BreakdownChart({
         <p className="flex h-40 items-center justify-center px-6 text-center text-sm text-muted">{empty}</p>
       ) : view === "table" ? (
         <DataTable
-          columns={[{ key: "name", label: "Category" }, { key: "value", label: "Count", align: "right" }, { key: "share", label: "Share", align: "right" }]}
+          columns={[{ key: "name", label: "Kind" }, { key: "value", label: "How many", align: "right" }, { key: "share", label: "Share", align: "right" }]}
           rows={rows.map((r) => ({ name: r.name, value: count(r.value), share: percent(r.share, 1) }))}
         />
       ) : (
@@ -52,7 +54,7 @@ export function BreakdownChart({
                 content={({ active, payload }) => {
                   const row = payload?.[0]?.payload as (typeof rows)[number] | undefined;
                   return active && row ? (
-                    <TooltipBox title={row.name} rows={[{ name: "of total", color, value: `${count(row.value)} · ${percent(row.share, 1)}` }]} />
+                    <TooltipBox title={row.name} rows={[{ name: "of all", color, value: `${count(row.value)} · ${percent(row.share, 1)}` }]} />
                   ) : null;
                 }}
               />

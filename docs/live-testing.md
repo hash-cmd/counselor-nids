@@ -34,7 +34,10 @@ times out, so expect a delay of up to a couple of minutes.
 Your normal traffic should produce few incidents. On the **Alerts** page:
 
 - **ML only** incidents on ordinary browsing are false alarms from the ML.
-- **Snort only** incidents are Snort's (its rules in `snort/rules/nids.rules`).
+- **Snort only** incidents are Snort's (its rules in `snort/rules/nids.rules` plus the
+  community rules in `snort/rules/community/`). Policy rules such as "Terminal server
+  request attempt" fire on ordinary RDP use; run with `NIDS_SNORT_COMMUNITY=0` to compare
+  against the project's rules alone.
 - Click an incident for its source, destination and which detector raised it.
 
 Note the numbers on the Overview (flows analysed, flagged by the ML, Snort alerts). The

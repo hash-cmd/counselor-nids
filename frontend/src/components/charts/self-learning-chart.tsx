@@ -3,14 +3,15 @@
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { percent } from "@/lib/format";
+import { detectorName } from "@/lib/plain";
 import type { SelfLearningRow } from "@/lib/types";
 
 import { axisProps, Card, DataTable, Legend, TooltipBox, useViewToggle } from "@/components/ui/chart-parts";
 
 const SERIES = [
-  { key: "frozen", name: "No retraining", color: "var(--series-1)" },
-  { key: "cross_check", name: "Self-learning + cross-check", color: "var(--series-2)" },
-  { key: "conflicts_only", name: "Self-learning, conflicts only (paper)", color: "var(--series-3)" },
+  { key: "frozen", name: "Never learns", color: "var(--series-1)" },
+  { key: "cross_check", name: "Learns, with double-checking (this system)", color: "var(--series-2)" },
+  { key: "conflicts_only", name: "Learns only when unsure (research paper)", color: "var(--series-3)" },
 ] as const;
 
 type Point = { chunk: number; labels: string } & Partial<Record<(typeof SERIES)[number]["key"], number>>;
@@ -39,8 +40,8 @@ export function SelfLearningChart({ variants }: { variants: Record<string, SelfL
 
   return (
     <Card
-      title="Self-learning: each detector's own accuracy over time"
-      subtitle="Standalone verdicts (before any advice), traffic streamed in time order in chunks"
+      title="Learning on the job: each detector's own verdicts over time"
+      subtitle="How often each detector is right by itself (before asking anyone), as new kinds of attack arrive. Rising lines mean it learned from the others' advice."
       actions={toggle}
     >
       <Legend items={present.map((s) => ({ name: s.name, color: s.color, shape: "line" as const }))} />
@@ -49,11 +50,11 @@ export function SelfLearningChart({ variants }: { variants: Record<string, SelfL
           const data = points(variants, detector);
           return (
             <div key={detector}>
-              <h3 className="mb-2 text-xs font-semibold text-ink">{detector}</h3>
+              <h3 className="mb-2 text-xs font-semibold text-ink">{detectorName(detector)}</h3>
               {view === "table" ? (
                 <DataTable
                   columns={[
-                    { key: "chunk", label: "Chunk" },
+                    { key: "chunk", label: "Batch" },
                     { key: "labels", label: "Traffic" },
                     ...present.map((s) => ({ key: s.key, label: s.name, align: "right" as const })),
                   ]}
@@ -77,7 +78,7 @@ export function SelfLearningChart({ variants }: { variants: Record<string, SelfL
                           const p = payload?.[0]?.payload as Point | undefined;
                           return active && p ? (
                             <TooltipBox
-                              title={`Chunk ${p.chunk} · ${p.labels}`}
+                              title={`Batch ${p.chunk} · ${p.labels}`}
                               rows={present.map((s) => ({ name: s.name, color: s.color, value: percent(p[s.key] ?? null, 1) }))}
                             />
                           ) : null;

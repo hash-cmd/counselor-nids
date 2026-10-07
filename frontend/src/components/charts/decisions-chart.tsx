@@ -2,7 +2,8 @@
 
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-import { count, percent, RESOLUTION_LABELS } from "@/lib/format";
+import { count, percent } from "@/lib/format";
+import { detectorName, resolutionLabel, RESOLUTIONS } from "@/lib/plain";
 import type { DetectorStats } from "@/lib/types";
 
 import { axisProps, Card, DataTable, Legend, TooltipBox, useViewToggle } from "@/components/ui/chart-parts";
@@ -24,7 +25,8 @@ function breakdown(s: DetectorStats) {
  *  cross-check override, or by falling back to its best local classifier. */
 export function DecisionsChart({ detectors }: { detectors: Record<string, DetectorStats> }) {
   const { view, toggle } = useViewToggle();
-  const rows = Object.entries(detectors).map(([name, s]) => {
+  const rows = Object.entries(detectors).map(([key, s]) => {
+    const name = detectorName(key);
     const parts = breakdown(s);
     const shares = Object.fromEntries(
       PARTS.map((p) => [p.key, s.samples ? parts[p.key] / s.samples : 0]),
@@ -34,8 +36,8 @@ export function DecisionsChart({ detectors }: { detectors: Record<string, Detect
 
   return (
     <Card
-      title="How decisions were made"
-      subtitle="Share of each detector's verdicts"
+      title="How each detector made up its mind"
+      subtitle="Most verdicts should be made alone; the rest show the teamwork"
       actions={toggle}
     >
       {rows.length === 0 || rows.every((r) => r.samples === 0) ? (
@@ -44,7 +46,7 @@ export function DecisionsChart({ detectors }: { detectors: Record<string, Detect
         <DataTable
           columns={[
             { key: "name", label: "Detector" },
-            ...PARTS.map((p) => ({ key: p.key, label: RESOLUTION_LABELS[p.key], align: "right" as const })),
+            ...PARTS.map((p) => ({ key: p.key, label: resolutionLabel(p.key), align: "right" as const })),
           ]}
           rows={rows.map((r) => ({
             name: r.name,
@@ -53,12 +55,12 @@ export function DecisionsChart({ detectors }: { detectors: Record<string, Detect
         />
       ) : (
         <>
-          <Legend items={PARTS.map((p) => ({ name: RESOLUTION_LABELS[p.key], color: p.color, shape: "rect" as const }))} />
+          <Legend items={PARTS.map((p) => ({ name: resolutionLabel(p.key), color: p.color, shape: "rect" as const }))} />
           <div style={{ height: rows.length * 44 + 28 }}>
             <ResponsiveContainer>
               <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 0 }} barCategoryGap={10}>
                 <XAxis type="number" domain={[0, 1]} tickFormatter={(v) => percent(v, 0)} {...axisProps} />
-                <YAxis type="category" dataKey="name" width={80} axisLine={false} {...axisProps} />
+                <YAxis type="category" dataKey="name" width={112} axisLine={false} {...axisProps} />
                 <Tooltip
                   cursor={{ fill: "var(--wash)" }}
                   isAnimationActive={false}
@@ -68,7 +70,7 @@ export function DecisionsChart({ detectors }: { detectors: Record<string, Detect
                       <TooltipBox
                         title={row.name}
                         rows={PARTS.map((p) => ({
-                          name: RESOLUTION_LABELS[p.key],
+                          name: resolutionLabel(p.key),
                           color: p.color,
                           value: `${percent(row.shares[p.key], 1)} · ${count(row.parts[p.key])}`,
                         }))}
@@ -92,6 +94,14 @@ export function DecisionsChart({ detectors }: { detectors: Record<string, Detect
           </div>
         </>
       )}
+      <dl className="mt-4 grid gap-x-6 gap-y-1 border-t border-line pt-3 text-xs sm:grid-cols-2">
+        {PARTS.map((p) => (
+          <div key={p.key} className="flex gap-1.5">
+            <dt className="font-medium text-ink">{resolutionLabel(p.key)}:</dt>
+            <dd className="text-ink-2">{RESOLUTIONS[p.key].meaning}</dd>
+          </div>
+        ))}
+      </dl>
     </Card>
   );
 }

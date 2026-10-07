@@ -28,7 +28,7 @@ export default function LoginPage() {
       setError(
         e instanceof ApiError && e.status === 401
           ? "Wrong username or password."
-          : "Cannot reach the API. Is the Django server running?",
+          : "Can't reach the server. Is it running? Start it with ./start.sh",
       );
     } finally {
       setBusy(false);
@@ -39,7 +39,7 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center p-4">
       <form onSubmit={submit} className="w-full max-w-sm rounded-xl border border-line bg-surface p-6">
         <h1 className="text-lg font-semibold text-ink">Counselor NIDS</h1>
-        <p className="mb-6 text-sm text-ink-2">Sign in to watch the detectors.</p>
+        <p className="mb-6 text-sm text-ink-2">Sign in to see whether anything is attacking your network.</p>
         <label className="mb-3 block text-sm text-ink-2">
           Username
           <input

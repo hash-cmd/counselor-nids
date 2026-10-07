@@ -266,8 +266,31 @@ what it was trained on.
 Snort tuning (`snort/`): inspectors' built-in protocol-anomaly alerts are off (they flagged
 TLS sessions seen mid-stream as attacks — 35% of normal flows on the real capture); only the
 port-scan alerts (gid 122, except "open port") are on, and scan reports from port 53 are
-ignored (DNS answers looked like a UDP port scan). Snort is not in the Docker image (Debian
-has no package), so in Docker pcap replays run with the ML only.
+ignored (DNS answers looked like a UDP port scan). The FTP/SSH brute-force rules use a wide
+120 s window (10 and 15 connections) so **low-and-slow** guessing — paced to slip under a
+short-window threshold — is still caught; a fast burst falls inside the same window, so this
+only adds coverage. Verified: it flags a 12-attempt-over-88 s brute force that a 20-in-10 s
+rule misses, fires on none of a benign FTP session (control + passive-data connections), and
+still flags only the attackers (not the benign workstation) on `real-attacks-2018.pcap`. Snort
+is not in the Docker image (Debian has no package), so in Docker pcap replays run with the ML only.
+
+The table above uses the project's 34 rules (`snort/rules/nids.rules`) only. `./start.sh setup`
+also downloads the 4,017 **Snort 3 community rules** (exploits, malware, C2, policy) into
+`snort/rules/community/`, which `nids.lua` loads when present; `NIDS_SNORT_COMMUNITY=0` leaves
+them out. On `real-attacks-2018.pcap` they add 859 alerts to Snort's 11,079:
+
+| Community rule | Alerts | On |
+|---|---|---|
+| OS-LINUX Challenge ACK provocation (sid 40063) | 651 | the Slowloris attacker — the DoS the ML is weakest on |
+| INDICATOR-SHELLCODE ssh CRC32 overflow filler (1325) | 13 | the SSH brute-force attacker |
+| POLICY-OTHER Windows Terminal server request (1448) | 165 | internet hosts connecting to the workstation's RDP port |
+| OS-WINDOWS SMB anonymous IPC share access (42340) | 29 | internet hosts probing the workstation's SMB port |
+| PROTOCOL-ICMP Destination Unreachable (404) | 1 | — |
+
+The last three are on traffic the dataset labels normal: the lab's workstation was reachable
+from the internet, and these are outside scanners rather than the planned attacks. Against
+the dataset's labels they count as false alarms (195 alerts); on your own network, expect the
+RDP and SMB policy rules to fire on ordinary Windows use.
 
 ## Wider coverage: detector 3 (CSE-CIC-IDS2018)
 
@@ -320,9 +343,24 @@ python scripts/live_detectors/make_demo_capture.py   # data/pcap/real-attacks-20
 | SSH brute force / web attacks | 0% / 0% | 99.6% / 100% | 99.6% / 89.4% |
 | **Benign (false alarms)** | 0.14% | 0.02% | **0.02%** |
 
+Two things keep live false alarms down, both at inference time (the models are unchanged, so
+the experiment numbers above are untouched; both are proven on the 339k-flow live set):
+
+- **Connection-only flows are not sent to the ML.** A port scan, a failed connection or a
+  bare SYN flood exchanges no payload; the detectors never trained on such flows and only
+  emit best-guess false alarms for them (one scan produced ~50k). `carries_payload` in
+  `services/live_capture.py` drops them — 0 of every attack type and 0 benign flows in the
+  live set are affected — while they are still indexed so Snort (which detects scans) can
+  link its alerts. Disable with `nids extract --live … --keep-empty-flows`.
+- **Unresolved-conflict guesses are treated as normal** (`--suppress-fallback`, on for the
+  live detectors in `start.sh` and pcap replays). When a detector's classifiers disagree and
+  no counselor can advise, the "attack" fallback is a blind guess — it causes the live
+  false alarms (e.g. on HTTPS) yet accounts for 16 of ~190k real detections; suppressing it
+  takes benign false alarms from 0.02% to 0.00% at a 0.01-point cost in detection.
+
 Limits: one attacker per attack type in one lab network; no live botnet, DDoS or infiltration
-detector (no single victim capture). Watch the false-alarm rate on your own network
-(docs/live-testing.md).
+detector (no single victim capture). Scans and payload exploits are Snort's job, not the ML's.
+Watch the false-alarm rate on your own network (docs/live-testing.md).
 
 ## Differences from the paper
 

@@ -9,13 +9,6 @@ export const perSecond = (value: number) => `${Math.round(value).toLocaleString(
 export const clock = (unixSeconds: number) =>
   new Date(unixSeconds * 1000).toLocaleTimeString("en-GB", { hour12: false });
 
-export const RESOLUTION_LABELS: Record<string, string> = {
-  unanimous: "Unanimous",
-  advice: "Counselor advice",
-  cross_check: "Cross-check",
-  fallback: "Fallback",
-};
-
 /** Detectors keep their colour slot by name, never by position in a filtered list.
  *  Four validated slots; any further detector folds into muted "other" ink rather
  *  than reusing a hue. */

@@ -77,8 +77,9 @@ def main():
             written += n
             print(f"{source.capture}: {n:,} packets", flush=True)
     OUT.with_name(OUT.name + ".txt").write_text(
-        "Real CSE-CIC-IDS2018 traffic the live detectors never trained on: DoS (GoldenEye, Hulk, Slowloris, "
-        "SlowHTTPTest), FTP/SSH brute force, web attacks, and normal workstation traffic.\n")  # shown in the dashboard
+        "Real attacks recorded in a test lab in 2018 (CSE-CIC-IDS2018), from moments the AI never learned from: "
+        "flooding attacks, password guessing and website attacks, mixed with normal office traffic. "
+        "A fair test of what the system catches.\n")  # shown in the dashboard
     print(f"wrote {written:,} packets to {OUT}")
 
 

@@ -82,8 +82,8 @@ def build(seed: int = 0) -> tuple[list, dict]:
     return cap.packets, parts
 
 
-DESCRIPTION = ("Synthetic: generated packets (port scan, web attacks, SYN flood, SSH brute force). "
-               "Snort catches these; the ML, trained on real traffic, does not recognise them.")
+DESCRIPTION = ("Made-up attack traffic (port scan, website attacks, flooding, password guessing). "
+               "The rule checker catches these; the AI, which learned from real attacks, does not recognise them.")
 
 
 def main():

@@ -10,18 +10,21 @@ import { SOURCE_COLORS } from "@/components/charts/detection-timeline";
 export function TopSources({ sources }: { sources: Breakdown["sources"] }) {
   const max = Math.max(1, ...sources.map((s) => Math.max(s.ml, s.snort)));
   return (
-    <Card title="Top sources of flagged flows" subtitle="The address that sent each flagged flow's first packet — usually the attacker">
+    <Card
+      title="Where the suspicious traffic came from"
+      subtitle="The computers (by IP address) that started the most flagged connections. Usually the attacker, but treat it as a lead, not proof."
+    >
       {sources.length === 0 ? (
         <p className="flex h-40 items-center justify-center px-6 text-center text-sm text-muted">
-          Source addresses appear for packet captures and live traffic.
+          Addresses are shown for recorded and live traffic. The practice data doesn&apos;t include them.
         </p>
       ) : (
         <table className="w-full text-xs">
           <thead className="text-left text-muted">
             <tr>
-              <th className="pb-2 font-medium">Source</th>
-              <th className="pb-2 font-medium">Flagged by the ML</th>
-              <th className="pb-2 font-medium">Snort alerts</th>
+              <th className="pb-2 font-medium">Computer (IP address)</th>
+              <th className="pb-2 font-medium">Flagged by the AI</th>
+              <th className="pb-2 font-medium">Rule checker alarms</th>
             </tr>
           </thead>
           <tbody>

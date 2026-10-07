@@ -12,18 +12,18 @@ export function OverlapChart({ summary }: { summary: SnortSummary }) {
   const { view, toggle } = useViewToggle();
   const total = summary.flows.both + summary.flows.snort_only + summary.flows.ml_only;
   const rows = [
-    { name: "Both flagged", flows: summary.flows.both, hint: "Snort and the ML agree" },
-    { name: "Snort only", flows: summary.flows.snort_only, hint: "ML did not flag the flow" },
-    { name: "ML only", flows: summary.flows.ml_only, hint: "Snort had no alert for the flow" },
+    { name: "Both", flows: summary.flows.both, hint: "The AI and the rule checker agree: very likely a real attack" },
+    { name: "Only rule checker", flows: summary.flows.snort_only, hint: "A false alarm, or an attack the AI never learned about" },
+    { name: "Only the AI", flows: summary.flows.ml_only, hint: "No rule matched, but the traffic behaves like an attack" },
   ].map((r) => ({ ...r, share: total ? r.flows / total : 0 }));
 
   return (
-    <Card title="Who flagged each flow" subtitle="Flows flagged by Snort, by the ML, or by both" actions={toggle}>
+    <Card title="Who spotted it" subtitle="Suspicious connections, by which method raised the alarm" actions={toggle}>
       {view === "table" ? (
         <DataTable
           columns={[
-            { key: "name", label: "Flagged by" },
-            { key: "flows", label: "Flows", align: "right" },
+            { key: "name", label: "Spotted by" },
+            { key: "flows", label: "Connections", align: "right" },
             { key: "share", label: "Share", align: "right" },
             { key: "hint", label: "Meaning" },
           ]}
@@ -34,7 +34,7 @@ export function OverlapChart({ summary }: { summary: SnortSummary }) {
           <ResponsiveContainer>
             <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 64, bottom: 0, left: 0 }} barCategoryGap={10}>
               <XAxis type="number" hide domain={[0, "dataMax"]} />
-              <YAxis type="category" dataKey="name" width={112} axisLine={false} {...axisProps} />
+              <YAxis type="category" dataKey="name" width={124} axisLine={false} {...axisProps} />
               <Tooltip
                 cursor={{ fill: "var(--wash)" }}
                 isAnimationActive={false}

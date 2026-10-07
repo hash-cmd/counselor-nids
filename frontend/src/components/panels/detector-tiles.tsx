@@ -1,4 +1,5 @@
 import { count, percent, seriesColor } from "@/lib/format";
+import { detectorKnows, detectorName } from "@/lib/plain";
 import type { DetectorStats } from "@/lib/types";
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -11,12 +12,19 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
   );
 }
 
+const TEAMWORK = [
+  ["Unsure", "conflicts", "times its own checks disagreed"],
+  ["Took advice", "advised", "times another detector settled it"],
+  ["Double-checked", "cross_checked", "attacks caught only because another detector spoke up"],
+  ["Learned from", "retrained_on", "connections it has since learned from"],
+] as const;
+
 export function DetectorTiles({ detectors }: { detectors: Record<string, DetectorStats> }) {
   const names = Object.keys(detectors);
   if (names.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-line bg-surface p-8 text-center text-sm text-ink-2">
-        No detectors are running. Start a replay above to watch them work.
+        No detectors are running. Start a test on the Overview page to watch them work.
       </div>
     );
   }
@@ -24,28 +32,25 @@ export function DetectorTiles({ detectors }: { detectors: Record<string, Detecto
     <div className="grid gap-4 md:grid-cols-2">
       {names.map((name) => {
         const s = detectors[name];
+        const knows = detectorKnows(name);
         return (
           <section key={name} className="rounded-xl border border-line bg-surface p-5">
-            <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-ink">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
               <span className="inline-block size-2.5 rounded-sm" style={{ background: seriesColor(name, names) }} />
-              {name}
+              {detectorName(name)}
             </h2>
+            <p className="mb-4 mt-0.5 text-xs text-ink-2">{knows ? `Specialist in ${knows}.` : name}</p>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <Stat label="Flows analysed" value={count(s.samples)} />
+              <Stat label="Connections checked" value={count(s.samples)} />
               <Stat label="Attacks flagged" value={count(s.flagged)} />
-              <Stat label="Accuracy" value={percent(s.accuracy)} />
-              <Stat label="Detection rate" value={percent(s.detection_rate)} />
+              <Stat label="Verdicts right" value={percent(s.accuracy)} hint={s.accuracy == null ? "practice data only" : undefined} />
+              <Stat label="Attacks caught" value={percent(s.detection_rate)} hint={s.detection_rate == null ? "practice data only" : undefined} />
             </div>
-            <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 border-t border-line pt-3 text-xs sm:grid-cols-4">
-              {[
-                ["Conflicts", s.conflicts],
-                ["Advised", s.advised],
-                ["Cross-checked", s.cross_checked],
-                ["Retrained on", s.retrained_on],
-              ].map(([label, value]) => (
-                <div key={label as string}>
+            <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-line pt-3 text-xs sm:grid-cols-4">
+              {TEAMWORK.map(([label, key, hint]) => (
+                <div key={key} title={hint}>
                   <dt className="text-muted">{label}</dt>
-                  <dd className="tabular text-ink">{count(value as number)}</dd>
+                  <dd className="tabular text-ink">{count(s[key])}</dd>
                 </div>
               ))}
             </dl>

@@ -11,8 +11,8 @@ import { axisProps, Card, DataTable, Legend, TooltipBox, useViewToggle } from "@
 export const SOURCE_COLORS = { ml: "var(--ink-secondary)", snort: "var(--series-3)" } as const;
 
 const SERIES = [
-  { key: "ml", name: "Flows flagged by the ML", color: SOURCE_COLORS.ml },
-  { key: "snort", name: "Snort alerts", color: SOURCE_COLORS.snort },
+  { key: "ml", name: "Flagged by the AI", color: SOURCE_COLORS.ml },
+  { key: "snort", name: "Rule checker (Snort) alarms", color: SOURCE_COLORS.snort },
 ] as const;
 
 /** Detections per second from both systems, on one axis (same unit). */
@@ -21,9 +21,9 @@ export function DetectionTimeline({ points, snort }: { points: RatePoint[]; snor
   const series = SERIES.filter((s) => s.key === "ml" || snort);
 
   return (
-    <Card title="Detections over time" subtitle="Per second, last three minutes" actions={toggle}>
+    <Card title="Suspicious activity over time" subtitle="Connections flagged each second, over the last three minutes. Spikes mean an attack is happening." actions={toggle}>
       {points.length < 2 ? (
-        <p className="flex h-56 items-center justify-center text-sm text-muted">Waiting for traffic…</p>
+        <p className="flex h-56 items-center justify-center text-sm text-muted">Nothing yet. The chart fills in once traffic is being checked.</p>
       ) : view === "table" ? (
         <DataTable
           columns={[{ key: "time", label: "Time" }, ...series.map((s) => ({ key: s.key, label: s.name, align: "right" as const }))]}
