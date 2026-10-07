@@ -20,11 +20,13 @@ const seriesName = (name: string) =>
 export function LabelChart({
   title,
   subtitle,
+  tag,
   table,
   note,
 }: {
   title: string;
   subtitle: string;
+  tag?: string;
   table: ByLabelTable;
   note?: React.ReactNode;
 }) {
@@ -35,7 +37,7 @@ export function LabelChart({
   type Row = (typeof data)[number];
 
   return (
-    <Card title={title} subtitle={subtitle} actions={toggle}>
+    <Card title={title} tag={tag} subtitle={subtitle} actions={toggle}>
       {view === "table" ? (
         <DataTable
           columns={[

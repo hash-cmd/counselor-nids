@@ -25,12 +25,13 @@ export default function DetectorsPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         <RateChart
           title="Connections checked per second"
+          tag="Fig.2 · Throughput"
           subtitle="How busy the system is"
           points={streamRate}
           series={[{ key: "stream", name: "Connections checked", color: "var(--ink-secondary)" }]}
         />
         <div className="lg:col-span-2">
-          <RateChart title="Attacks flagged per second" subtitle="By each detector, on the same scale" points={live.flaggedRate} series={perDetector} />
+          <RateChart title="Attacks flagged per second" tag="Fig.3 · Per detector" subtitle="By each detector, on the same scale" points={live.flaggedRate} series={perDetector} />
         </div>
       </div>
       <DecisionsChart detectors={live.detectors} />

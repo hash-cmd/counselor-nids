@@ -37,6 +37,7 @@ export function DecisionsChart({ detectors }: { detectors: Record<string, Detect
   return (
     <Card
       title="How each detector made up its mind"
+      tag="Fig.4 · Decisions"
       subtitle="Most verdicts should be made alone; the rest show the teamwork"
       actions={toggle}
     >

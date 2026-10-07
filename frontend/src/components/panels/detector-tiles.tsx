@@ -5,9 +5,9 @@ import type { DetectorStats } from "@/lib/types";
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div>
-      <p className="text-xs text-ink-2">{label}</p>
-      <p className="mt-0.5 text-2xl font-semibold text-ink">{value}</p>
-      {hint && <p className="text-xs text-muted">{hint}</p>}
+      <p className="eyebrow">{label}</p>
+      <p className="figure mt-1 text-2xl font-semibold text-ink">{value}</p>
+      {hint && <p className="eyebrow mt-0.5 normal-case tracking-normal">{hint}</p>}
     </div>
   );
 }

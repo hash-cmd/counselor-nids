@@ -49,11 +49,11 @@ function Sidebar({ pathname, username, collapsed, onNavigate, logout }: {
     <div className="flex h-full flex-col">
       <Link href="/" onClick={onNavigate}
             className={`flex items-center gap-2.5 py-4 ${collapsed ? "justify-center px-0" : "px-5"}`}>
-        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent text-sm font-bold text-white">N</span>
+        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent text-sm font-bold text-[var(--accent-ink)]">N</span>
         {!collapsed && (
           <span className="leading-tight">
-            <span className="block text-sm font-semibold text-ink">Counselor NIDS</span>
-            <span className="block text-xs text-muted">Network attack detector</span>
+            <span className="block text-sm font-semibold tracking-tight text-ink">Counselor NIDS</span>
+            <span className="eyebrow block">Network attack detector</span>
           </span>
         )}
       </Link>
@@ -64,7 +64,7 @@ function Sidebar({ pathname, username, collapsed, onNavigate, logout }: {
             {collapsed ? (
               <div className="mx-auto mb-2 h-px w-6 bg-line" />
             ) : (
-              <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">{group.heading}</p>
+              <p className="eyebrow px-3 pb-1.5">{group.heading}</p>
             )}
             <ul className="space-y-0.5">
               {group.items.map((item) => {
@@ -189,14 +189,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <IconSidebar />
             </button>
             <span className="h-5 w-px bg-line" aria-hidden />
-            <h1 className="text-base font-semibold text-ink">{title}</h1>
+            <h1 className="text-base font-semibold tracking-tight text-ink">{title}</h1>
             <div className="ml-auto flex items-center gap-2">
               <ConnectionBadge />
               <NotificationBell />
             </div>
           </header>
 
-          <main className="mx-auto w-full max-w-7xl flex-1 space-y-4 px-4 py-6 lg:px-6">{children}</main>
+          <main className="w-full flex-1 space-y-4 px-4 py-6 lg:px-6">{children}</main>
         </div>
       </div>
     </LiveProvider>

@@ -184,7 +184,7 @@ export function TrafficControls({ status, activity }: { status: ReplayStatus; ac
               onClick={() => send("/replay/start/", { replay, rate, cross_check: crossCheck, snort: kind === "pcap" && snort && !!options?.snort })}
               disabled={busy || !replay || !!noModels || liveRunning}
               title={liveRunning ? "Your network is being watched live — stop that in its terminal first" : undefined}
-              className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              className="rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-[var(--accent-ink)] hover:opacity-90 disabled:opacity-50"
             >
               Start test
             </button>

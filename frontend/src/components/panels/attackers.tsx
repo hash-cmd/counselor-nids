@@ -91,26 +91,29 @@ function AttackerCard({ attacker, reputation }: { attacker: Attacker; reputation
   );
 }
 
-export function AttackersPanel({ incidents, limit, title = "Attackers", footer }: {
+export function AttackersPanel({ incidents, limit, title = "Attackers", footer, className }: {
   incidents: Incident[];
   limit?: number;
   title?: string;
   footer?: React.ReactNode;
+  className?: string;
 }) {
   const all = groupByAttacker(incidents);
   const attackers = limit ? all.slice(0, limit) : all;
   const reputation = useReputation(attackers.map((a) => a.ip));
   return (
     <Card
+      className={className}
       title={title}
+      tag="Movers"
       subtitle="Each suspicious source, ranked by severity, with the story of what it did. Click one to expand."
     >
       {attackers.length === 0 ? (
-        <p className="py-10 text-center text-sm text-muted">
+        <p className="flex flex-1 items-center justify-center py-10 text-center text-sm text-muted">
           No attackers to show. They appear once suspicious traffic has a source address (recorded or live traffic).
         </p>
       ) : (
-        <div className="space-y-2">
+        <div className="min-h-0 flex-1 space-y-2 overflow-auto">
           {attackers.map((a) => (
             <AttackerCard key={a.ip} attacker={a} reputation={reputation[a.ip]} />
           ))}

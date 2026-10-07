@@ -55,11 +55,13 @@ function MiniChart({ points, series, max }: { points: RatePoint[]; series: RateS
 export function RateChart({
   title,
   subtitle,
+  tag,
   points,
   series,
 }: {
   title: string;
   subtitle: string;
+  tag?: string;
   points: RatePoint[];
   series: RateSeries[];
 }) {
@@ -68,7 +70,7 @@ export function RateChart({
   const niceMax = niceStep(max / 4) * 4;
 
   return (
-    <Card title={title} subtitle={subtitle} actions={toggle}>
+    <Card title={title} tag={tag} subtitle={subtitle} actions={toggle}>
       {points.length < 2 ? (
         <p className="flex h-48 items-center justify-center text-sm text-muted">Waiting for traffic…</p>
       ) : view === "table" ? (

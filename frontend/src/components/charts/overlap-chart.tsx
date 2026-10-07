@@ -18,7 +18,7 @@ export function OverlapChart({ summary }: { summary: SnortSummary }) {
   ].map((r) => ({ ...r, share: total ? r.flows / total : 0 }));
 
   return (
-    <Card title="Who spotted it" subtitle="Suspicious connections, by which method raised the alarm" actions={toggle}>
+    <Card title="Who spotted it" tag="Fig.2 · Overlap" subtitle="Suspicious connections, by which method raised the alarm" actions={toggle}>
       {view === "table" ? (
         <DataTable
           columns={[

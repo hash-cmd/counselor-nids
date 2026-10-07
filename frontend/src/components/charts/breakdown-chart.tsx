@@ -16,6 +16,7 @@ function shortName(name: string): string {
 export function BreakdownChart({
   title,
   subtitle,
+  tag,
   counts,
   color,
   empty,
@@ -23,6 +24,7 @@ export function BreakdownChart({
 }: {
   title: string;
   subtitle: string;
+  tag?: string;
   counts: Record<string, number>;
   color: string;
   empty: string;
@@ -33,7 +35,7 @@ export function BreakdownChart({
   const rows = Object.entries(counts).map(([name, value]) => ({ name: format(name), value, share: total ? value / total : 0 }));
 
   return (
-    <Card title={title} subtitle={subtitle} actions={rows.length ? toggle : undefined}>
+    <Card title={title} tag={tag} subtitle={subtitle} actions={rows.length ? toggle : undefined}>
       {rows.length === 0 ? (
         <p className="flex h-40 items-center justify-center px-6 text-center text-sm text-muted">{empty}</p>
       ) : view === "table" ? (

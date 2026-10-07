@@ -16,14 +16,14 @@ const SERIES = [
 ] as const;
 
 /** Detections per second from both systems, on one axis (same unit). */
-export function DetectionTimeline({ points, snort }: { points: RatePoint[]; snort: boolean }) {
+export function DetectionTimeline({ points, snort, className }: { points: RatePoint[]; snort: boolean; className?: string }) {
   const { view, toggle } = useViewToggle();
   const series = SERIES.filter((s) => s.key === "ml" || snort);
 
   return (
-    <Card title="Suspicious activity over time" subtitle="Connections flagged each second, over the last three minutes. Spikes mean an attack is happening." actions={toggle}>
+    <Card className={className} title="Suspicious activity over time" tag="Fig.1 · Timeline" subtitle="Connections flagged each second, over the last three minutes. Spikes mean an attack is happening." actions={toggle}>
       {points.length < 2 ? (
-        <p className="flex h-56 items-center justify-center text-sm text-muted">Nothing yet. The chart fills in once traffic is being checked.</p>
+        <p className="flex min-h-56 flex-1 items-center justify-center text-sm text-muted">Nothing yet. The chart fills in once traffic is being checked.</p>
       ) : view === "table" ? (
         <DataTable
           columns={[{ key: "time", label: "Time" }, ...series.map((s) => ({ key: s.key, label: s.name, align: "right" as const }))]}
@@ -35,7 +35,7 @@ export function DetectionTimeline({ points, snort }: { points: RatePoint[]; snor
       ) : (
         <>
           {series.length > 1 && <Legend items={series.map((s) => ({ name: s.name, color: s.color, shape: "line" as const }))} />}
-          <div className="h-56">
+          <div className="min-h-56 flex-1">
             <ResponsiveContainer>
               <LineChart data={points} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid vertical={false} stroke="var(--grid)" />

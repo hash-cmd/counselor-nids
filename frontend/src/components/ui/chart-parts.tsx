@@ -5,20 +5,27 @@ import { useState } from "react";
 export function Card({
   title,
   subtitle,
+  tag,
   actions,
   children,
+  className,
 }: {
   title: string;
   subtitle?: string;
+  tag?: string;
   actions?: React.ReactNode;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <section className="rounded-xl border border-line bg-surface p-5">
+    <section className={`rounded-xl border border-line bg-surface p-5 ${className ?? ""}`}>
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-ink">{title}</h2>
-          {subtitle && <p className="mt-0.5 text-xs text-ink-2">{subtitle}</p>}
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 text-sm font-semibold tracking-tight text-ink">
+            {title}
+            {tag && <span className="eyebrow">{tag}</span>}
+          </h2>
+          {subtitle && <p className="mt-1 text-xs text-ink-2">{subtitle}</p>}
         </div>
         {actions}
       </header>

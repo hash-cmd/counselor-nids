@@ -56,35 +56,44 @@ export default function OverviewPage() {
       <TrafficControls status={live.replay} activity={live.activity} />
       <KpiStrip live={live} incidents={incidents} />
 
-      {incidents.some((i) => i.src) && <AttackersPanel incidents={incidents} limit={4} title="Top risks" />}
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <DetectionTimeline points={live.detectionRate} snort={live.snort != null} />
-        </div>
-        {live.snort ? <OverlapChart summary={live.snort} /> : <TopSources sources={breakdown?.sources ?? []} />}
+      {/* Hero row: the activity timeline paired with the ranked top-risk side panel.
+          Both are direct grid children so they stretch to the same height. */}
+      <div className="grid items-stretch gap-4 lg:grid-cols-3">
+        <DetectionTimeline className="flex flex-col lg:col-span-2" points={live.detectionRate} snort={live.snort != null} />
+        <AttackersPanel incidents={incidents} limit={6} title="Top risks" className="flex flex-col" />
       </div>
 
+      {/* Breakdowns side by side. */}
       <div className="grid gap-4 lg:grid-cols-2">
         <BreakdownChart
           title="Kinds of attack the AI caught"
+          tag="Fig.5 · By type"
           subtitle="Flagged connections, by the attack they really were"
           counts={breakdown?.ml_labels ?? {}}
           color={SOURCE_COLORS.ml}
           format={attackName}
-          empty="The real attack type is only known for the practice data (“Practice data with known answers” above). Recorded and live traffic come without answers."
+          empty="The real attack type is only known for the practice data. Recorded and live traffic come without answers."
         />
         <BreakdownChart
           title="Rule checker (Snort): which rules went off"
+          tag="Fig.6 · By rule"
           subtitle="Each alarm Snort raised, by the rule that triggered it"
           counts={breakdown?.snort_rules ?? {}}
           color={SOURCE_COLORS.snort}
           format={ruleName}
-          empty="The rule checker looks inside network packets, so it runs on recorded or live traffic. Choose “Recorded network traffic” above."
+          empty="The rule checker runs on recorded or live traffic. Choose “Recorded network traffic” above."
         />
       </div>
 
-      {live.snort && <TopSources sources={breakdown?.sources ?? []} />}
+      {/* Who-spotted overlap + top sources (only meaningful with packet traffic). */}
+      {live.snort ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <OverlapChart summary={live.snort} />
+          <TopSources sources={breakdown?.sources ?? []} />
+        </div>
+      ) : (
+        <TopSources sources={breakdown?.sources ?? []} />
+      )}
 
       <IncidentsTable
         incidents={incidents.slice(0, 10)}

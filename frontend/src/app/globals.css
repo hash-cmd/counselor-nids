@@ -1,79 +1,89 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
-/* Tokens: chart chrome, ink, categorical series and status colours (validated palette,
-   light and dark selected separately). Components use the roles, never raw hex. */
+/* Warm-dark "data journal" theme: charcoal-brown surfaces, cream ink, amber accent,
+   monospace micro-labels. Components use the role tokens, never raw hex. */
 :root {
   color-scheme: light;
-  --page: #f9f9f7;
-  --surface: #fcfcfb;
+  --page: #f3efe6;
+  --surface: #faf7f0;
   --surface-raised: #ffffff;
-  --ink: #0b0b0b;
-  --ink-secondary: #52514e;
-  --ink-muted: #6f6d68;
-  --grid: #e1e0d9;
-  --axis: #c3c2b7;
-  --border: rgba(11, 11, 11, 0.1);
-  --wash: rgba(11, 11, 11, 0.04);
+  --ink: #1c1710;
+  --ink-secondary: #5a5344;
+  --ink-muted: #837b6b;
+  --grid: #e3ddce;
+  --axis: #cfc8b6;
+  --border: rgba(28, 23, 16, 0.12);
+  --wash: rgba(28, 23, 16, 0.04);
 
-  --series-1: #2a78d6;
-  --series-2: #eb6834;
-  --series-3: #1baf7a;
-  --series-4: #eda100;
+  --series-1: #a99a72;
+  --series-2: #c78327;
+  --series-3: #5f9e3f;
+  --series-4: #b65f33;
 
-  --status-good: #0ca30c;
-  --status-warning: #fab219;
-  --status-critical: #d03b3b;
-  --good-text: #006300;
-  --critical-text: #b42f2f;
-  --accent: #2a78d6;
+  --status-good: #4e8a2e;
+  --status-warning: #c78327;
+  --status-critical: #c04a2e;
+  --good-text: #3f7a24;
+  --critical-text: #b4472c;
+  --accent: #bd7d1f;
+  --accent-ink: #1c1710;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
-    --page: #0d0d0d;
-    --surface: #1a1a19;
-    --surface-raised: #222220;
-    --ink: #ffffff;
-    --ink-secondary: #c3c2b7;
-    --ink-muted: #9a988f;
-    --grid: #2c2c2a;
-    --axis: #383835;
-    --border: rgba(255, 255, 255, 0.1);
-    --wash: rgba(255, 255, 255, 0.05);
+    --page: #1a1611;
+    --surface: #221d17;
+    --surface-raised: #2a241c;
+    --ink: #f2eee4;
+    --ink-secondary: #b6ad9d;
+    --ink-muted: #847c6e;
+    --grid: #2f2920;
+    --axis: #3b342a;
+    --border: rgba(242, 238, 228, 0.11);
+    --wash: rgba(242, 238, 228, 0.05);
 
-    --series-1: #3987e5;
-    --series-2: #d95926;
-    --series-3: #199e70;
-    --series-4: #c98500;
+    --series-1: #cabf9f;
+    --series-2: #e3a73f;
+    --series-3: #93c16d;
+    --series-4: #d07c4f;
 
-    --good-text: #0ca30c;
-    --critical-text: #e66767;
-    --accent: #3987e5;
+    --status-good: #93c16d;
+    --status-warning: #e3a73f;
+    --status-critical: #d4674a;
+    --good-text: #9fca72;
+    --critical-text: #dd7558;
+    --accent: #e3a73f;
+    --accent-ink: #1a1611;
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page: #0d0d0d;
-  --surface: #1a1a19;
-  --surface-raised: #222220;
-  --ink: #ffffff;
-  --ink-secondary: #c3c2b7;
-  --ink-muted: #9a988f;
-  --grid: #2c2c2a;
-  --axis: #383835;
-  --border: rgba(255, 255, 255, 0.1);
-  --wash: rgba(255, 255, 255, 0.05);
+  --page: #1a1611;
+  --surface: #221d17;
+  --surface-raised: #2a241c;
+  --ink: #f2eee4;
+  --ink-secondary: #b6ad9d;
+  --ink-muted: #847c6e;
+  --grid: #2f2920;
+  --axis: #3b342a;
+  --border: rgba(242, 238, 228, 0.11);
+  --wash: rgba(242, 238, 228, 0.05);
 
-  --series-1: #3987e5;
-  --series-2: #d95926;
-  --series-3: #199e70;
-  --series-4: #c98500;
+  --series-1: #cabf9f;
+  --series-2: #e3a73f;
+  --series-3: #93c16d;
+  --series-4: #d07c4f;
 
-  --good-text: #0ca30c;
-  --critical-text: #e66767;
-  --accent: #3987e5;
+  --status-good: #93c16d;
+  --status-warning: #e3a73f;
+  --status-critical: #d4674a;
+  --good-text: #9fca72;
+  --critical-text: #dd7558;
+  --accent: #e3a73f;
+  --accent-ink: #1a1611;
 }
 
 @theme inline {
@@ -87,9 +97,11 @@
   --color-line: var(--border);
   --color-wash: var(--wash);
   --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
   --color-good: var(--good-text);
   --color-critical: var(--critical-text);
-  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
 }
 
 body {
@@ -102,6 +114,23 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Editorial micro-label: uppercase monospace, letter-spaced, dim. */
+.eyebrow {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--ink-muted);
+}
+
+/* Big tabular figure for KPIs and stats. */
+.figure {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
 /* Print / Save-as-PDF: drop the app chrome, expand scroll areas, go light. */
 @media print {
   :root,
@@ -109,6 +138,7 @@ body {
     --page: #ffffff;
     --surface: #ffffff;
     --surface-raised: #ffffff;
+    --ink: #000000;
   }
   body {
     background: #ffffff;
@@ -117,7 +147,6 @@ body {
     max-width: none !important;
     padding: 0 !important;
   }
-  /* un-clip tables and card scroll regions so everything prints */
   .overflow-auto,
   .overflow-y-auto {
     max-height: none !important;

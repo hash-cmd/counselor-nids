@@ -19,12 +19,14 @@ export const METRIC_LABELS: Record<Metric, string> = {
 export function ComparisonChart({
   title,
   subtitle,
+  tag,
   detectors,
   metric,
   note,
 }: {
   title: string;
   subtitle?: string;
+  tag?: string;
   detectors: Record<string, ComparisonRow[]>;
   metric: Metric;
   note?: React.ReactNode;
@@ -41,7 +43,7 @@ export function ComparisonChart({
   const series = names.map((n) => ({ key: n, name: detectorName(n), color: seriesColor(n, names) }));
 
   return (
-    <Card title={title} subtitle={subtitle} actions={toggle}>
+    <Card title={title} tag={tag} subtitle={subtitle} actions={toggle}>
       {view === "table" ? (
         <DataTable
           columns={[{ key: "label", label: "Method" }, ...names.map((n) => ({ key: n, label: detectorName(n), align: "right" as const }))]}

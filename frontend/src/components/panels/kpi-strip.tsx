@@ -3,14 +3,24 @@ import type { LiveState } from "@/lib/live-feed";
 import type { Incident } from "@/lib/incidents";
 import { severityCounts, TIER_META, type Tier } from "@/lib/severity";
 
-function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Kpi({ n, label, value, unit, hint }: { n: string; label: string; value: string; unit?: string; hint?: string }) {
   return (
-    <div className="min-w-0">
-      <p className="text-xs text-ink-2">{label}</p>
-      <p className="mt-0.5 text-2xl font-semibold text-ink">{value}</p>
-      {hint && <p className="text-xs text-muted">{hint}</p>}
+    <div className="relative min-w-0 border-t border-line px-4 py-4 first:pl-0">
+      <span className="eyebrow absolute right-3 top-4 text-[var(--accent)]">{n}</span>
+      <p className="eyebrow">{label}</p>
+      <p className="figure mt-2 text-3xl font-semibold text-ink">
+        {value}
+        {unit && <span className="ml-0.5 text-base text-muted">{unit}</span>}
+      </p>
+      {hint && <p className="eyebrow mt-1.5 normal-case tracking-normal">{hint}</p>}
     </div>
   );
+}
+
+/** Split "357.6%" into the number and a unit suffix for the big-figure treatment. */
+function split(value: string): { value: string; unit?: string } {
+  const m = value.match(/^([\d.,—-]+)(.*)$/);
+  return m && m[2] ? { value: m[1], unit: m[2] } : { value };
 }
 
 const TIER_ORDER: Tier[] = ["critical", "high", "medium", "low"];
@@ -63,32 +73,26 @@ export function KpiStrip({ live, incidents }: { live: LiveState; incidents: Inci
   const decided = snort ? snort.confirmed + snort.disputed : 0;
   const suspicious = flagged + (snort ? snort.flows.snort_only : 0);
 
+  const cells = [
+    { label: "Connections checked", ...split(count(flows)), hint: `by ${detectors.length} AI detector${detectors.length === 1 ? "" : "s"}` },
+    { label: "Flagged by the AI", ...split(count(flagged)), hint: flows ? `${percent(flagged / flows, 1)} of connections` : undefined },
+    { label: "Rule checker alarms", ...split(snort ? count(snort.alerts) : "—"),
+      hint: snort ? `on ${count(snort.flows.both + snort.flows.snort_only)} connections` : "recorded or live only" },
+    { label: "AI agrees with rule checker", ...split(decided ? percent(snort!.confirmed / decided, 1) : "—"),
+      hint: decided ? `${count(snort!.confirmed)} of ${count(decided)} alarms` : undefined },
+    { label: "AI verdicts that were right", ...split(best ? percent(best.accuracy) : "—"),
+      hint: best ? "best detector" : "practice data only" },
+    { label: "Attacks the AI caught", ...split(best ? percent(best.detection_rate) : "—"),
+      hint: best ? "out of all real attacks" : "practice data only" },
+  ];
+
   return (
     <section className="rounded-xl border border-line bg-surface p-5">
       <Verdict checked={flows} suspicious={suspicious} running={live.activity === "running"} incidents={incidents} />
-      <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-4 md:grid-cols-3 xl:grid-cols-6">
-        <Kpi label="Connections checked" value={count(flows)} hint={`by ${detectors.length} AI detector${detectors.length === 1 ? "" : "s"}`} />
-        <Kpi label="Flagged by the AI" value={count(flagged)} hint={flows ? `${percent(flagged / flows, 1)} of connections` : undefined} />
-        <Kpi
-          label="Rule checker alarms"
-          value={snort ? count(snort.alerts) : "—"}
-          hint={snort ? `on ${count(snort.flows.both + snort.flows.snort_only)} connections` : "recorded or live traffic only"}
-        />
-        <Kpi
-          label="AI agrees with the rule checker"
-          value={decided ? percent(snort!.confirmed / decided, 1) : "—"}
-          hint={decided ? `${count(snort!.confirmed)} of ${count(decided)} alarms` : undefined}
-        />
-        <Kpi
-          label="AI verdicts that were right"
-          value={best ? percent(best.accuracy) : "—"}
-          hint={best ? "best detector" : "known only for practice data"}
-        />
-        <Kpi
-          label="Attacks the AI caught"
-          value={best ? percent(best.detection_rate) : "—"}
-          hint={best ? "out of all real attacks" : "known only for practice data"}
-        />
+      <div className="mt-2 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+        {cells.map((c, i) => (
+          <Kpi key={c.label} n={String(i + 1).padStart(2, "0")} label={c.label} value={c.value} unit={c.unit} hint={c.hint} />
+        ))}
       </div>
     </section>
   );
