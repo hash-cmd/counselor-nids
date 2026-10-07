@@ -5,7 +5,7 @@ import { useState } from "react";
 import { clock, count } from "@/lib/format";
 import type { Incident } from "@/lib/incidents";
 import { ATTACK_INFO } from "@/lib/plain";
-import { type Attacker, attackStory, categoryOf, groupByAttacker, severityScore, tierOf } from "@/lib/severity";
+import { type Attacker, attackStory, BADGE_LABEL, categoryOf, groupByAttacker, severityScore, tierOf } from "@/lib/severity";
 
 import { BlockDialog } from "@/components/panels/block-dialog";
 import { Card } from "@/components/ui/chart-parts";
@@ -30,10 +30,15 @@ function AttackerCard({ attacker }: { attacker: Attacker }) {
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-wash"
       >
-        <SeverityBadge tier={attacker.tier} score={attacker.score} />
+        <SeverityBadge tier={attacker.threatTier} score={attacker.threatScore} />
         <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-x-2">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="tabular font-semibold text-ink">{attacker.ip}</span>
+            {attacker.badges.map((b) => (
+              <span key={b} className="rounded border border-line px-1.5 py-0 text-[10px] font-medium uppercase tracking-wide text-ink-2">
+                {BADGE_LABEL[b]}
+              </span>
+            ))}
             <span className="text-xs text-muted">{timeRange(attacker)}</span>
           </span>
           <span className="mt-0.5 block truncate text-xs text-ink-2">{attackStory(attacker)}</span>

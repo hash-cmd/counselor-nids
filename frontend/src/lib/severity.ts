@@ -56,16 +56,49 @@ export function ipOf(endpoint: string | null): string | null {
   return i > 0 ? endpoint.slice(0, i) : endpoint;
 }
 
+export type ThreatBadge = "escalating" | "persistent" | "multi-target";
+
 export type Attacker = {
   ip: string;
   incidents: Incident[];
   score: number;          // the worst single thing they did
   tier: Tier;
+  threatScore: number;    // behavioural score: worst act + escalation + breadth + volume
+  threatTier: Tier;
+  badges: ThreatBadge[];
   categories: Category[]; // distinct activity, in the order it first appeared (the "story")
   targets: string[];      // distinct destination IPs they hit
   firstSeen: number | null;
   lastSeen: number | null;
 };
+
+/** Reconnaissance/probing vs. an actual attack action — the two halves of a kill chain. */
+const RECON: Category[] = ["scan", "rdp", "smb"];
+const ACTION: Category[] = ["bruteforce", "dos", "web-sql", "web-xss", "web-files", "web", "exploit", "botnet", "insider"];
+
+export const BADGE_LABEL: Record<ThreatBadge, string> = {
+  escalating: "Escalating",
+  persistent: "Persistent",
+  "multi-target": "Multi-target",
+};
+
+/** Behavioural threat profile: raises the attacker above their worst single alert when
+ *  they show a kill-chain pattern — probing then attacking, over time, across targets.
+ *  Pure re-ranking of confirmed incidents; it never invents a new alert. */
+function threatProfile(worst: number, categories: Category[], targets: number, count: number, span: number) {
+  const badges: ThreatBadge[] = [];
+  let score = worst;
+
+  const recon = categories.some((c) => RECON.includes(c));
+  const action = categories.some((c) => ACTION.includes(c));
+  if (recon && action) { score += 12; badges.push("escalating"); }   // probed, then attacked
+  if (targets > 2) { score += 8; badges.push("multi-target"); }
+  if (count >= 5 && span >= 60) { score += 8; badges.push("persistent"); } // sustained activity
+  score += Math.min(10, Math.round(Math.log10(Math.max(1, count)) * 7));
+
+  score = Math.max(worst, Math.min(100, score));
+  return { score, tier: tierOf(score), badges };
+}
 
 /** Group incidents by the source IP behind them into ranked attacker profiles.
  *  Benign (false-alarm) incidents are left out. */
@@ -91,15 +124,19 @@ export function groupByAttacker(incidents: Incident[]): Attacker[] {
     }
     const score = Math.max(...list.map(severityScore));
     const times = ordered.map((i) => i.time).filter((t): t is number => t != null);
+    const first = times[0] ?? null;
+    const last = times[times.length - 1] ?? null;
+    const span = first != null && last != null ? last - first : 0;
+    const threat = threatProfile(score, categories, targets.size, ordered.length, span);
     attackers.push({
-      ip, incidents: ordered, score, tier: tierOf(score), categories,
-      targets: [...targets],
-      firstSeen: times[0] ?? null,
-      lastSeen: times[times.length - 1] ?? null,
+      ip, incidents: ordered, score, tier: tierOf(score),
+      threatScore: threat.score, threatTier: threat.tier, badges: threat.badges,
+      categories, targets: [...targets],
+      firstSeen: first, lastSeen: last,
     });
   }
 
-  return attackers.sort((a, b) => b.score - a.score || b.incidents.length - a.incidents.length);
+  return attackers.sort((a, b) => b.threatScore - a.threatScore || b.incidents.length - a.incidents.length);
 }
 
 /** How many incidents fall in each severity tier (benign/false-alarm excluded). */
