@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
+import { NotificationBell } from "@/components/panels/notifications";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useAuth, useRequireAuth } from "@/lib/auth";
 import { LiveProvider, useLive } from "@/lib/live-feed";
@@ -189,8 +190,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </button>
             <span className="h-5 w-px bg-line" aria-hidden />
             <h1 className="text-base font-semibold text-ink">{title}</h1>
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-2">
               <ConnectionBadge />
+              <NotificationBell />
             </div>
           </header>
 
