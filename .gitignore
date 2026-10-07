@@ -15,6 +15,9 @@ data/pcap/
 models/
 results/
 
+# Snort 3 community rules (downloaded by ./start.sh setup)
+snort/rules/community/
+
 # Editors / OS
 .vscode/
 .idea/

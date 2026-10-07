@@ -43,12 +43,25 @@ binder =
 }
 
 local rules_dir = os.getenv('NIDS_SNORT_RULES') or 'snort/rules'
+local rules = 'include ' .. rules_dir .. '/nids.rules\n'
+
+-- Snort 3 community rules (exploits, malware, C2, policy...), fetched by
+-- ./start.sh setup into rules/community/; NIDS_SNORT_COMMUNITY=0 leaves them out.
+local community = rules_dir .. '/community/snort3-community.rules'
+local found = io.open(community)
+if found then
+    found:close()
+    if os.getenv('NIDS_SNORT_COMMUNITY') ~= '0' then
+        rules = rules .. 'include ' .. community .. '\n'
+    end
+end
+
 ips =
 {
     -- Inspectors' built-in alerts are mostly protocol anomalies (e.g. a TLS session seen
     -- from the middle), not attacks; nids.rules turns on just the port-scan ones (gid 122).
     enable_builtin_rules = false,
-    include = rules_dir .. '/nids.rules',
+    rules = rules,
     variables = default_variables,
 }
 

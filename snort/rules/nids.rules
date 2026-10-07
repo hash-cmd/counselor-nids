@@ -39,5 +39,10 @@ alert http any any -> any any ( msg:"NIDS path traversal attempt (/etc/passwd)";
 alert tcp any any -> any [80,443,8080] ( msg:"NIDS possible SYN flood"; flags:S; detection_filter:track by_dst, count 200, seconds 2; classtype:attempted-dos; sid:9000010; rev:1; )
 alert http any any -> any any ( msg:"NIDS HTTP request flood"; http_method; content:"GET"; detection_filter:track by_dst, count 300, seconds 2; classtype:attempted-dos; sid:9000011; rev:1; )
 
-alert tcp any any -> any 22 ( msg:"NIDS SSH brute force (many connections)"; flags:S; detection_filter:track by_src, count 20, seconds 10; classtype:attempted-admin; sid:9000020; rev:1; )
-alert tcp any any -> any 21 ( msg:"NIDS FTP brute force (many connections)"; flags:S; detection_filter:track by_src, count 20, seconds 10; classtype:attempted-admin; sid:9000021; rev:1; )
+# Brute force: repeated login connections to one service from one source. The window is
+# wide (120 s) so low-and-slow guessing — paced under a short-window threshold to evade it —
+# still trips the rule; a fast burst falls inside the same window, so this only adds coverage.
+# Thresholds stay above normal use: legitimate FTP/SSH rarely opens this many fresh control
+# connections in two minutes (data transfers and SSH multiplexing reuse connections).
+alert tcp any any -> any 22 ( msg:"NIDS SSH brute force (repeated login attempts)"; flags:S; detection_filter:track by_src, count 15, seconds 120; classtype:attempted-admin; sid:9000020; rev:2; )
+alert tcp any any -> any 21 ( msg:"NIDS FTP brute force (repeated login attempts)"; flags:S; detection_filter:track by_src, count 10, seconds 120; classtype:attempted-admin; sid:9000021; rev:2; )
