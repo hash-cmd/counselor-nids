@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { AttackersPanel } from "@/components/panels/attackers";
 import { MlAlertsTable } from "@/components/panels/ml-alerts-table";
 import { type Filter, IncidentFilters, IncidentsTable } from "@/components/panels/incidents";
 import { SnortAlertsTable } from "@/components/panels/snort-alerts-table";
@@ -10,9 +11,10 @@ import { useIncidents } from "@/lib/incidents";
 import { useLive } from "@/lib/live-feed";
 
 const TABS = [
-  { key: "incidents", label: "Incidents" },
-  { key: "ml", label: "ML alerts" },
-  { key: "snort", label: "Snort alerts" },
+  { key: "incidents", label: "All alerts" },
+  { key: "attackers", label: "Attackers" },
+  { key: "ml", label: "AI details" },
+  { key: "snort", label: "Rule checker details" },
 ] as const;
 
 const PAGE = 100;
@@ -39,26 +41,39 @@ export default function AlertsPage() {
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-ink">Alerts</h1>
-          <p className="text-sm text-ink-2">
-            Every flow the ML or Snort flagged, linked by flow. Click an incident for details.
-          </p>
+        <p className="max-w-2xl text-sm text-ink-2">
+          Every connection that looked like an attack, to the AI, the rule checker, or both. Click one to see
+          what it means.
+        </p>
+        <div className="flex items-center gap-2 print:hidden">
+          <div className="flex rounded-md border border-line p-0.5 text-sm" role="tablist">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.key}
+                onClick={() => setTab(t.key)}
+                className={`rounded px-3 py-1 ${tab === t.key ? "bg-wash font-semibold text-ink" : "text-ink-2 hover:bg-wash"}`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            title="Print or save the current view as a PDF report"
+            className="rounded-md border border-line px-3 py-1 text-sm text-ink-2 hover:bg-wash hover:text-ink"
+          >
+            Print / PDF
+          </button>
         </div>
-        <div className="flex rounded-md border border-line p-0.5 text-sm" role="tablist">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.key}
-              onClick={() => setTab(t.key)}
-              className={`rounded px-3 py-1 ${tab === t.key ? "bg-wash font-semibold text-ink" : "text-ink-2 hover:bg-wash"}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      </div>
+
+      <div className="hidden print:block">
+        <h1 className="text-lg font-semibold text-ink">NIDS incident report</h1>
+        <p className="text-xs text-muted">Generated {new Date().toLocaleString()}</p>
       </div>
 
       {tab === "incidents" && (
@@ -66,10 +81,10 @@ export default function AlertsPage() {
           incidents={data?.incidents ?? []}
           subtitle={
             data
-              ? `${count(data.total)} incident${data.total === 1 ? "" : "s"}${source !== "all" || query ? " match" : ""} · each flagged flow once`
+              ? `${count(data.total)} suspicious connection${data.total === 1 ? "" : "s"}${source !== "all" || query ? " match" : ""}`
               : "Loading…"
           }
-          empty={error ?? (data?.counts.all ? "No incidents match." : "No incidents yet — start a replay or a live capture.")}
+          empty={error ?? (data?.counts.all ? "No alerts match your search." : "No alerts yet. Start a test on the Overview page, or watch your network live.")}
           actions={<IncidentFilters source={source} onSource={changeSource} query={query} onQuery={changeQuery} counts={data?.counts ?? null} />}
           footer={
             data && data.incidents.length < data.total && (
@@ -86,6 +101,7 @@ export default function AlertsPage() {
           }
         />
       )}
+      {tab === "attackers" && <AttackersPanel incidents={data?.incidents ?? []} />}
       {tab === "ml" && <MlAlertsTable alerts={live.alerts} detectors={detectors} />}
       {tab === "snort" && <SnortAlertsTable alerts={live.snortAlerts} />}
     </>

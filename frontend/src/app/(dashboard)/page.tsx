@@ -8,10 +8,42 @@ import { DetectionTimeline, SOURCE_COLORS } from "@/components/charts/detection-
 import { IncidentsTable } from "@/components/panels/incidents";
 import { KpiStrip } from "@/components/panels/kpi-strip";
 import { TrafficControls } from "@/components/panels/traffic-controls";
+import { AttackersPanel } from "@/components/panels/attackers";
 import { OverlapChart } from "@/components/charts/overlap-chart";
 import { TopSources } from "@/components/panels/top-sources";
 import { buildIncidents } from "@/lib/incidents";
 import { useLive } from "@/lib/live-feed";
+import { attackName, ruleName } from "@/lib/plain";
+
+/** What the dashboard is, for someone seeing it for the first time. */
+function HowItWorks() {
+  return (
+    <details className="rounded-xl border border-line bg-surface p-5 text-sm text-ink-2">
+      <summary className="cursor-pointer font-semibold text-ink">How this works</summary>
+      <div className="mt-3 space-y-2">
+        <p>
+          Every time two computers talk over the network, that conversation is a <strong>connection</strong>.
+          This system checks each connection for signs of an attack, in two independent ways:
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            <strong className="text-ink">The AI</strong> learned from thousands of real attacks what attack traffic
+            looks like (its size, speed and timing), and spots new connections that look the same. It is a team of
+            specialist detectors that ask each other for advice when unsure.
+          </li>
+          <li>
+            <strong className="text-ink">The rule checker (Snort)</strong> is a widely used security tool. It looks
+            inside the traffic for known attack patterns, like a virus scanner does.
+          </li>
+        </ul>
+        <p>
+          When both raise an alarm about the same connection, it is very likely a real attack. When only one
+          does, it is worth a look: it could be a false alarm, or something only that method can see.
+        </p>
+      </div>
+    </details>
+  );
+}
 
 export default function OverviewPage() {
   const live = useLive();
@@ -20,9 +52,11 @@ export default function OverviewPage() {
 
   return (
     <>
-      <h1 className="text-xl font-semibold text-ink">Overview</h1>
+      <HowItWorks />
       <TrafficControls status={live.replay} activity={live.activity} />
-      <KpiStrip live={live} />
+      <KpiStrip live={live} incidents={incidents} />
+
+      {incidents.some((i) => i.src) && <AttackersPanel incidents={incidents} limit={4} title="Top risks" />}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
@@ -33,18 +67,20 @@ export default function OverviewPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <BreakdownChart
-          title="Attack types caught by the ML"
-          subtitle="Flagged flows by their true label"
+          title="Kinds of attack the AI caught"
+          subtitle="Flagged connections, by the attack they really were"
           counts={breakdown?.ml_labels ?? {}}
           color={SOURCE_COLORS.ml}
-          empty="True labels exist only for recorded flows (CICIDS2017); captures and live traffic are unlabelled."
+          format={attackName}
+          empty="The real attack type is only known for the practice data (“Practice data with known answers” above). Recorded and live traffic come without answers."
         />
         <BreakdownChart
-          title="Snort rules triggered"
-          subtitle="Snort alerts by rule"
+          title="Rule checker (Snort): which rules went off"
+          subtitle="Each alarm Snort raised, by the rule that triggered it"
           counts={breakdown?.snort_rules ?? {}}
           color={SOURCE_COLORS.snort}
-          empty="Snort runs on packet captures and live traffic. Choose “Packet capture + Snort” above."
+          format={ruleName}
+          empty="The rule checker looks inside network packets, so it runs on recorded or live traffic. Choose “Recorded network traffic” above."
         />
       </div>
 
@@ -52,12 +88,12 @@ export default function OverviewPage() {
 
       <IncidentsTable
         incidents={incidents.slice(0, 10)}
-        subtitle="Latest flagged flows, with what the ML and Snort said"
+        subtitle="The latest connections that looked like an attack. Click one to see what it means."
         footer={
           incidents.length > 0 && (
             <p className="mt-3 text-right text-sm">
               <Link href="/alerts" className="text-accent hover:underline">
-                Search all incidents →
+                See and search all alerts →
               </Link>
             </p>
           )

@@ -28,9 +28,9 @@ export type Incident = {
 };
 
 export const SOURCE_LABELS: Record<IncidentSource, string> = {
-  both: "ML + Snort",
-  ml: "ML only",
-  snort: "Snort only",
+  both: "AI + rule checker",
+  ml: "AI only",
+  snort: "Rule checker only",
 };
 
 /** Group the live feed's latest alerts by flow — for the overview's "latest" list.

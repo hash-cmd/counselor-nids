@@ -101,3 +101,31 @@ body {
 .tabular {
   font-variant-numeric: tabular-nums;
 }
+
+/* Print / Save-as-PDF: drop the app chrome, expand scroll areas, go light. */
+@media print {
+  :root,
+  :root:not([data-theme="light"]) {
+    --page: #ffffff;
+    --surface: #ffffff;
+    --surface-raised: #ffffff;
+  }
+  body {
+    background: #ffffff;
+  }
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  /* un-clip tables and card scroll regions so everything prints */
+  .overflow-auto,
+  .overflow-y-auto {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  section,
+  .rounded-xl {
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+}
