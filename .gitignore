@@ -18,6 +18,9 @@ results/
 # Snort 3 community rules (downloaded by ./start.sh setup)
 snort/rules/community/
 
+# Downloaded IP blocklists for offline reputation (scripts/fetch_blocklists.py)
+data/blocklists/
+
 # Editors / OS
 .vscode/
 .idea/

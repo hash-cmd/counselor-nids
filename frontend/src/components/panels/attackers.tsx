@@ -5,6 +5,7 @@ import { useState } from "react";
 import { clock, count } from "@/lib/format";
 import type { Incident } from "@/lib/incidents";
 import { ATTACK_INFO } from "@/lib/plain";
+import { useReputation } from "@/lib/reputation";
 import { type Attacker, attackStory, BADGE_LABEL, categoryOf, groupByAttacker, severityScore, tierOf } from "@/lib/severity";
 
 import { BlockDialog } from "@/components/panels/block-dialog";
@@ -17,7 +18,7 @@ function timeRange(a: Attacker): string {
   return `${clock(a.firstSeen)} – ${clock(a.lastSeen)}`;
 }
 
-function AttackerCard({ attacker }: { attacker: Attacker }) {
+function AttackerCard({ attacker, reputation }: { attacker: Attacker; reputation?: { listed: boolean; source: string | null } }) {
   const [open, setOpen] = useState(false);
   const [blocking, setBlocking] = useState(false);
   const worstIncident = attacker.incidents.reduce((a, b) => (severityScore(a) >= severityScore(b) ? a : b));
@@ -34,6 +35,12 @@ function AttackerCard({ attacker }: { attacker: Attacker }) {
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="tabular font-semibold text-ink">{attacker.ip}</span>
+            {reputation?.listed && (
+              <span className="rounded border border-[var(--status-critical)] px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-critical"
+                    title={`On the ${reputation.source} blocklist of known-bad IPs`}>
+                Known bad
+              </span>
+            )}
             {attacker.badges.map((b) => (
               <span key={b} className="rounded border border-line px-1.5 py-0 text-[10px] font-medium uppercase tracking-wide text-ink-2">
                 {BADGE_LABEL[b]}
@@ -92,6 +99,7 @@ export function AttackersPanel({ incidents, limit, title = "Attackers", footer }
 }) {
   const all = groupByAttacker(incidents);
   const attackers = limit ? all.slice(0, limit) : all;
+  const reputation = useReputation(attackers.map((a) => a.ip));
   return (
     <Card
       title={title}
@@ -104,7 +112,7 @@ export function AttackersPanel({ incidents, limit, title = "Attackers", footer }
       ) : (
         <div className="space-y-2">
           {attackers.map((a) => (
-            <AttackerCard key={a.ip} attacker={a} />
+            <AttackerCard key={a.ip} attacker={a} reputation={reputation[a.ip]} />
           ))}
           {limit && all.length > limit && (
             <p className="pt-1 text-right text-xs text-muted">+{all.length - limit} more on the Alerts page</p>

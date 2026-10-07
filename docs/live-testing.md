@@ -52,6 +52,23 @@ anywhere — Snort and the detectors just read the file.
 
 Only test attack tools against machines you own and are allowed to test.
 
+## 6. Measure the false-alarm rate over several days (the real test)
+
+The lab numbers and a few minutes of live capture can't tell you how noisy the system is on
+*your* traffic over time. To find out, leave it running and read the numbers:
+
+1. `./start.sh live wlan0` and use your network normally for a few days (browsing, streaming,
+   video calls, package updates, backups — the full range of what you do).
+2. Each day, note the Overview's headline — connections checked, flagged by the AI, and the
+   severity breakdown — and skim the **Alerts** page. On ordinary traffic almost everything
+   should be **Low**; investigate any **ML only** alert on normal browsing as a false alarm.
+3. A healthy result is a handful of false alarms per day or fewer. If a particular normal
+   activity trips the AI repeatedly, note the source/port and the attack type it was called —
+   that's the signal for what to retrain on or which Snort rule to tune.
+
+This is the honest gap the experiments leave open, and the only way to know whether to trust
+the live detectors on your network.
+
 ## Stopping
 
 Ctrl+C in the terminal stops everything, including the root capture processes.

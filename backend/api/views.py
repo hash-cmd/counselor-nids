@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 
 from nids.services import monitor
 
-from . import replay, results
+from . import replay, reputation, results
 from .redis_client import get_redis
 
 
@@ -20,6 +20,15 @@ class DetectorsView(APIView):
         r = get_redis()
         return Response({"detectors": monitor.read_stats(r), "breakdown": monitor.read_breakdown(r),
                          "activity": monitor.read_activity(r), "replay": replay.manager.status()})
+
+
+class ReputationView(APIView):
+    """Offline reputation for up to 100 IPs: ?ips=a,b,c -> which are on local blocklists."""
+
+    def get(self, request):
+        raw = request.query_params.get("ips", "")
+        ips = [ip.strip() for ip in raw.split(",") if ip.strip()][:100]
+        return Response(reputation.check(ips))
 
 
 class AlertsView(APIView):

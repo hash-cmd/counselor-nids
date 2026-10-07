@@ -144,10 +144,20 @@ A web dashboard shows the detection as it happens:
 
 | Page | |
 |---|---|
-| **Overview** | traffic controls (packet capture + Snort, or recorded flows), headline numbers, ML vs Snort detections over time, who flagged each flow, attack types and Snort rules, top attacking sources, latest incidents |
-| **Alerts** | every flagged flow once ("incident") with what the ML and Snort said — filter by ML + Snort / ML only / Snort only, search by IP, rule, label or flow, details panel; searched server-side over the full history |
+| **Overview** | traffic controls, headline numbers with a plain-language verdict and severity breakdown, the top-risk attackers, ML vs Snort detections over time, who flagged each flow, attack types and Snort rules, latest alerts |
+| **Alerts** | every flagged flow once, each with a **severity** (Critical/High/Medium/Low) and a plain explanation; an **Attackers** view grouping alerts by source IP into ranked "attack stories" (scan → brute force → …) with behavioural threat scoring (escalating / persistent / multi-target); filter, full-history server-side search, and a Print/PDF report |
 | **Detectors** | each ML detector: counters, throughput, how decisions were made (unanimous / counselor advice / cross-check / fallback) |
 | **Results** | the experiment comparisons and self-learning curves |
+
+The dashboard is written for a non-expert (AI / rule checker rather than ML / Snort), with a
+grouped collapsible sidebar. A header **bell** raises desktop/sound notifications on new
+high-severity alerts; an attacker's **Block this IP** action generates a ready-to-paste
+firewall command (it never runs anything privileged, and warns on local addresses).
+
+**Offline IP reputation** (optional): `python scripts/fetch_blocklists.py` downloads public
+blocklists into `data/blocklists/`; the dashboard then badges known-bad source IPs. The
+lookup is local (`GET /api/reputation/`), so no address ever leaves the machine; with no
+lists installed the feature is simply inactive.
 
 Live data comes over one WebSocket shared by all pages. A capture started with
 `./start.sh live wlan0` shows up as "Live capture running".
@@ -165,6 +175,7 @@ detector services --Redis--> Django API (DRF + Channels) --REST + WebSocket--> N
 | `GET /api/alerts/?limit=&after=` | latest attack decisions |
 | `GET /api/incidents/?source=&q=&limit=&offset=` | flagged flows with ML and Snort verdicts, over the full history |
 | `GET /api/results/` | experiment comparisons and self-learning curves |
+| `GET /api/reputation/?ips=` | which of the given IPs are on the local blocklists (offline) |
 | `GET /api/replay/`, `POST /api/replay/start/`, `POST /api/replay/stop/` | replay control |
 | `ws://…/ws/live/` | stats every second, new alerts, reset on a new replay (cookie, or `?token=` for scripts) |
 

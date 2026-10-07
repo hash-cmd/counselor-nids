@@ -17,6 +17,7 @@ urlpatterns = [
     path("incidents/", views.IncidentsView.as_view(), name="incidents"),
     path("results/", views.ResultsView.as_view(), name="results"),
     path("snort/", views.SnortView.as_view(), name="snort"),
+    path("reputation/", views.ReputationView.as_view(), name="reputation"),
     path("replay/", views.ReplayView.as_view(), name="replay"),
     path("replay/start/", views.ReplayStartView.as_view(), name="replay-start"),
     path("replay/stop/", views.ReplayStopView.as_view(), name="replay-stop"),
