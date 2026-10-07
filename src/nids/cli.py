@@ -43,7 +43,8 @@ def extract(args) -> None:
         extractor.wait_for_subscribers(r, args.wait_for)
     if args.live:
         from .services import live_capture
-        sent = live_capture.capture(r, args.live, args.source, args.batch_size)
+        sent = live_capture.capture(r, args.live, args.source, args.batch_size,
+                                     drop_empty_flows=not args.keep_empty_flows)
     else:
         sent = extractor.replay(r, args.csv, args.source, args.batch_size, args.rate,
                                 args.timestamp_column, args.max_rows)
@@ -63,7 +64,8 @@ def detect(args) -> None:
     print(f"{detector.name}: subscribed to {args.sources}", flush=True)
     detector_service.run(
         bus.connect(args.redis), detector, args.sources, args.min_accuracy, args.window,
-        args.cross_check, args.retrain_every, args.advice_wait, args.exit_on_end)
+        args.cross_check, args.retrain_every, args.advice_wait, args.exit_on_end,
+        suppress_fallback=args.suppress_fallback)
 
 
 def monitor(args) -> None:
@@ -112,6 +114,8 @@ def main(argv=None) -> None:
     p.add_argument("--timestamp-column", default="record_id")
     p.add_argument("--max-rows", type=int)
     p.add_argument("--wait-for", type=int, default=0, help="wait until N detectors subscribed")
+    p.add_argument("--keep-empty-flows", action="store_true",
+                   help="live: also send connection-only flows (scans) to the ML (noisier)")
     p.set_defaults(func=extract)
 
     p = sub.add_parser("observe", help="run the Observer")
@@ -124,6 +128,8 @@ def main(argv=None) -> None:
     p.add_argument("--min-accuracy", type=float, default=0.9)
     p.add_argument("--window", type=float, default=0.0, help="advice look-back (0 = exact record match)")
     p.add_argument("--cross-check", action="store_true", help="cross-check normal verdicts")
+    p.add_argument("--suppress-fallback", action="store_true",
+                   help="treat unresolved-conflict guesses as normal (fewer false alarms on live traffic)")
     p.add_argument("--retrain-every", type=int, default=0, help="retrain after N learned signatures")
     p.add_argument("--advice-wait", type=float, default=2.0)
     p.add_argument("--exit-on-end", action="store_true")

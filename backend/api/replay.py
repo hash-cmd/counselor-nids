@@ -133,10 +133,14 @@ class ReplayManager:
 
             env = {**os.environ, "NIDS_REDIS_URL": settings.NIDS_REDIS_URL}
             commands = {"observer": self._command("observe", "--exit-on-end")}
+            # Packet captures use the live detectors on Python-flow-meter features; drop
+            # their unresolved-conflict guesses, which are the main live false alarms.
+            live = kind == "pcap"
             for model in models:
                 commands[model.stem] = self._command(
                     "detect", str(model), "--sources", "replay", "--min-accuracy", str(min_accuracy),
-                    "--exit-on-end", *(["--cross-check"] if cross_check else []))
+                    "--exit-on-end", *(["--cross-check"] if cross_check else []),
+                    *(["--suppress-fallback"] if live else []))
             if kind == "pcap":
                 commands["extractor"] = self._command(
                     "extract", "--live", str(path), "--source", "replay", "--wait-for", str(len(models)))

@@ -157,6 +157,7 @@ def run(
     advice_wait: float = 2.0,
     exit_on_end: bool = False,
     max_history: int = 2_000_000,
+    suppress_fallback: bool = False,
 ) -> None:
     state = State()
     r.hset(bus.SUBSCRIPTIONS, detector.name, json.dumps(sources))
@@ -173,7 +174,7 @@ def run(
                         r.sadd(bus.ENDED, detector.name)
                         continue
                     frame = bus.decode_frame(bus.field(fields, "frame"))
-                    process(r, detector, frame, state, min_accuracy, window, cross_check)
+                    process(r, detector, frame, state, min_accuracy, window, cross_check, suppress_fallback)
                     detector.trim_history(max_history)
                     pending = sum(len(y) for _, y in detector.new_signatures)
                     if retrain_every and pending >= retrain_every:
@@ -187,13 +188,13 @@ def run(
         state.stop.set()
 
 
-def process(r, detector, frame, state, min_accuracy, window, cross_check) -> pd.DataFrame:
+def process(r, detector, frame, state, min_accuracy, window, cross_check, suppress_fallback=False) -> pd.DataFrame:
     results = detector.detect(frame, frame["timestamp"])
     state.watermark = max(state.watermark, float(frame["timestamp"].max()))
     counselors = [RemoteCounselor(r, name.decode())
                   for name in r.hkeys(bus.SUBSCRIPTIONS) if name.decode() != detector.name]
     network = CounselorNetwork([detector, *counselors], min_accuracy, window,
-                               cross_check_normal=cross_check)
+                               cross_check_normal=cross_check, suppress_fallback=suppress_fallback)
     final = network.resolve(detector, frame, results)
     record(r, detector.name, frame, final)
     # how far this detector has analysed, so the Snort correlator knows when to ask

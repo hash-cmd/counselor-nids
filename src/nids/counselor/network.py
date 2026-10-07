@@ -26,12 +26,21 @@ class CounselorNetwork:
         min_accuracy: float = 0.9,
         window: float = 2.0,
         cross_check_normal: bool = False,
+        suppress_fallback: bool = False,
     ):
-        """window: look-back in timestamp units; the paper uses 2 seconds."""
+        """window: look-back in timestamp units; the paper uses 2 seconds.
+
+        ``suppress_fallback`` (off by default, so the paper's experiments are unchanged)
+        downgrades an unresolved conflict's "attack" guess to normal. When a detector's
+        classifiers disagree and no counselor can advise, the fallback is the best local
+        classifier's bet; on out-of-distribution live traffic that bet is the main source
+        of false alarms, while it accounts for almost none of the real detections.
+        """
         self.detectors = detectors
         self.min_accuracy = min_accuracy
         self.window = window
         self.cross_check_normal = cross_check_normal
+        self.suppress_fallback = suppress_fallback
 
     def _best_advice(self, requester: Detector, timestamps: np.ndarray):
         """Best acceptable advice per timestamp: (found, prediction, counselor name) arrays."""
@@ -70,6 +79,10 @@ class CounselorNetwork:
         results.iloc[rows, results.columns.get_loc("prediction")] = prediction
         results.iloc[rows, results.columns.get_loc("resolution")] = resolution
         results.iloc[rows, results.columns.get_loc("counselor")] = counselor
+
+        if self.suppress_fallback:
+            guess = (results["resolution"] == "fallback").to_numpy() & results["prediction"].to_numpy(dtype=bool)
+            results.iloc[np.flatnonzero(guess), results.columns.get_loc("prediction")] = False
 
         requester.learn(samples.iloc[rows], prediction)
         return results

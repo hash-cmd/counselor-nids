@@ -114,7 +114,8 @@ def test_cli_extract_live_uses_live_capture(monkeypatch):
     from nids.services import live_capture
 
     calls = []
-    monkeypatch.setattr(live_capture, "capture", lambda r, target, source, batch: calls.append((target, source)) or 0)
+    monkeypatch.setattr(live_capture, "capture",
+                        lambda r, target, source, batch, **kw: calls.append((target, source)) or 0)
     monkeypatch.setattr("nids.services.bus.connect", lambda url=None: None)
     cli.main(["extract", "--live", "capture.pcap", "--source", "live"])
     assert calls == [("capture.pcap", "live")]

@@ -33,6 +33,19 @@ def test_low_accuracy_advice_is_ignored(blobs):
     assert confused.retrain() == 0
 
 
+def test_suppress_fallback_downgrades_unresolved_attack_guesses(blobs):
+    # min_accuracy above 1 means no advice is ever accepted, so conflicts stay "fallback".
+    def flagged(suppress):
+        network = CounselorNetwork([split_brain(blobs), accurate(blobs)],
+                                   min_accuracy=1.01, window=0, suppress_fallback=suppress)
+        res = network.run(blobs, blobs["record_id"])["split_brain"]
+        assert (res["resolution"] == "fallback").all()
+        return res["prediction"].to_numpy(dtype=bool)
+
+    assert flagged(suppress=False).any()      # the best-local guess flags some blobs
+    assert not flagged(suppress=True).any()   # suppression downgrades every such guess
+
+
 def test_no_counselor_history_in_window_means_fallback(blobs):
     confused, counselor = split_brain(blobs), accurate(blobs)
     counselor.detect(blobs, blobs["record_id"] + 1_000)  # history far in the future

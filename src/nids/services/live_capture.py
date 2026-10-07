@@ -49,6 +49,28 @@ def connection_columns(flows: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+# Features that reveal whether any application-layer data was exchanged.
+_FWD_LEN, _BWD_LEN = "Total Length of Fwd Packets", "Total Length of Bwd Packets"
+
+
+def carries_payload(flows: pd.DataFrame) -> pd.Series:
+    """True for flows that exchanged data in either direction.
+
+    Connection-only flows — a port scan's SYN/RST, failed connections, a bare SYN
+    flood — carry no payload. The live detectors were trained only on flows that
+    exchange data (every attack *and* benign flow in the training set does), so asking
+    them to classify empty flows yields best-guess false alarms: a single port scan
+    produces tens of thousands. Empty flows are still indexed for Snort, which detects
+    scans itself, so no detection is lost by keeping them out of the ML.
+    """
+    def total(column: str) -> pd.Series:
+        if column in flows:
+            return pd.to_numeric(flows[column], errors="coerce").fillna(0)
+        return pd.Series(0, index=flows.index)
+
+    return (total(_FWD_LEN) > 0) | (total(_BWD_LEN) > 0)
+
+
 def _follow_csv(path: str, process: subprocess.Popen, poll: float = 0.5):
     """Yield DataFrames of new rows appended to a CSV until the process exits."""
     header, offset, buffer = None, 0, ""
@@ -70,8 +92,14 @@ def _follow_csv(path: str, process: subprocess.Popen, poll: float = 0.5):
         time.sleep(poll)
 
 
-def capture(r: redis.Redis, interface_or_pcap: str, source: str, batch_size: int = 100) -> int:
-    """Capture from an interface (or read a .pcap file) and publish flows. Returns flows sent."""
+def capture(r: redis.Redis, interface_or_pcap: str, source: str, batch_size: int = 100,
+            drop_empty_flows: bool = True) -> int:
+    """Capture from an interface (or read a .pcap file) and publish flows. Returns flows sent.
+
+    ``drop_empty_flows`` keeps connection-only flows (scans, failed connections) out of
+    the ML detectors — they carry no signal the detectors learned and only add false
+    alarms. Such flows are still indexed so Snort's alerts can be linked to them.
+    """
     try:
         import cicflowmeter  # noqa: F401
     except ImportError:
@@ -88,8 +116,11 @@ def capture(r: redis.Redis, interface_or_pcap: str, source: str, batch_size: int
             flows["record_id"] = range(next_id, next_id + len(flows))
             flow_index.index_flows(r, flows.rename(columns={"conn_dst_port": "dst_port"}))
             next_id += len(flows)
-            pending.append(flows)
-            if sum(map(len, pending)) >= batch_size or process.poll() is not None:
+            if drop_empty_flows:
+                flows = flows[carries_payload(flows)]
+            if len(flows):
+                pending.append(flows)
+            if pending and (sum(map(len, pending)) >= batch_size or process.poll() is not None):
                 batch = pd.concat(pending, ignore_index=True)
                 # every detector sees this same flow stream, so advice matches on record_id
                 extractor.publish(r, batch, source)

@@ -199,6 +199,13 @@ cmd_setup() {
     say "demo capture"
     "$PY" scripts/make_synthetic_capture.py data/pcap/demo-attacks.pcap
   }
+  [[ -f snort/rules/community/snort3-community.rules ]] || {
+    say "Snort 3 community rules"
+    mkdir -p snort/rules/community
+    curl -fsSL https://www.snort.org/downloads/community/snort3-community-rules.tar.gz \
+      | tar xz -C snort/rules/community --strip-components=1 \
+      || warn "could not download the community rules — Snort will use snort/rules/nids.rules only"
+  }
   command -v snort >/dev/null || warn "Snort is not installed — live mode will run the ML only"
   say "done — now run: ./start.sh"
 }
@@ -247,7 +254,7 @@ cmd_live() {
   say "starting observer and ${#models[@]} detectors"
   run_service observer "$NIDS" observe
   for model in "${models[@]}"; do
-    run_service "detect-$(basename "$model" .joblib)" "$NIDS" detect "$model" --sources live --cross-check
+    run_service "detect-$(basename "$model" .joblib)" "$NIDS" detect "$model" --sources live --cross-check --suppress-fallback
   done
   if (( snort )); then
     say "starting Snort on $target"
