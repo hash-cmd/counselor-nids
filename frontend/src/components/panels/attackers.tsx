@@ -7,6 +7,7 @@ import type { Incident } from "@/lib/incidents";
 import { ATTACK_INFO } from "@/lib/plain";
 import { type Attacker, attackStory, categoryOf, groupByAttacker, severityScore, tierOf } from "@/lib/severity";
 
+import { BlockDialog } from "@/components/panels/block-dialog";
 import { Card } from "@/components/ui/chart-parts";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 
@@ -18,6 +19,7 @@ function timeRange(a: Attacker): string {
 
 function AttackerCard({ attacker }: { attacker: Attacker }) {
   const [open, setOpen] = useState(false);
+  const [blocking, setBlocking] = useState(false);
   const worstIncident = attacker.incidents.reduce((a, b) => (severityScore(a) >= severityScore(b) ? a : b));
   const worst = ATTACK_INFO[categoryOf(worstIncident)];
 
@@ -46,9 +48,19 @@ function AttackerCard({ attacker }: { attacker: Attacker }) {
 
       {open && (
         <div className="border-t border-line px-4 py-3 text-xs">
-          <p className="mb-2 text-ink-2">
-            <span className="font-semibold text-ink">What {attacker.ip} did:</span> {worst.what}
-          </p>
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <p className="text-ink-2">
+              <span className="font-semibold text-ink">What {attacker.ip} did:</span> {worst.what}
+            </p>
+            <button
+              type="button"
+              onClick={() => setBlocking(true)}
+              className="shrink-0 rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink-2 hover:bg-wash hover:text-ink print:hidden"
+            >
+              Block this IP
+            </button>
+          </div>
+          {blocking && <BlockDialog ip={attacker.ip} onClose={() => setBlocking(false)} />}
           <ol className="space-y-1">
             {attacker.incidents.map((i: Incident) => (
               <li key={i.key} className="flex items-baseline gap-2">
