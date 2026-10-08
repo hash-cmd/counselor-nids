@@ -27,6 +27,8 @@ rule checker. Ctrl+C stops everything, and logs are in `logs/`.
 - To run it permanently, as services that start at boot and restart on failure, see
   [docs/deployment.md](docs/deployment.md).
 - To check how it behaves on your own network, see [docs/live-testing.md](docs/live-testing.md).
+- Full documentation: [docs/Counselor-NIDS-Documentation.pdf](docs/Counselor-NIDS-Documentation.pdf); how it was
+  built, step by step in plain words: [docs/Counselor-NIDS-How-We-Built-It.pdf](docs/Counselor-NIDS-How-We-Built-It.pdf).
 
 ## How it works
 
