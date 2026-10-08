@@ -35,6 +35,9 @@ export function DetectionTimeline({ points, snort, className }: { points: RatePo
       ) : (
         <>
           {series.length > 1 && <Legend items={series.map((s) => ({ name: s.name, color: s.color, shape: "line" as const }))} />}
+          {points.every((p) => series.every((s) => !(p[s.key] ?? 0))) && (
+            <p className="mb-1 text-sm text-ink-2">All quiet: nothing flagged in the last three minutes.</p>
+          )}
           <div className="min-h-56 flex-1">
             <ResponsiveContainer>
               <LineChart data={points} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>

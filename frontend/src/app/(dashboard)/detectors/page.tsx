@@ -37,7 +37,7 @@ export default function DetectorsPage() {
         </div>
       </div>
       <DecisionsChart detectors={live.detectors} />
-      <SnortCounselor detectors={live.detectors} trust={live.snortTrust} />
+      <SnortCounselor detectors={live.detectors} trust={live.snortTrust} health={live.health} />
     </>
   );
 }

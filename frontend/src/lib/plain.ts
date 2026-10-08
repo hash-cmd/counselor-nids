@@ -24,6 +24,10 @@ export const CONFIGS: Record<string, { name: string; ablation?: boolean }> = {
 export const configName = (key: string) => CONFIGS[key]?.name ?? key;
 
 export const detectorName = (name: string) => DETECTORS[name]?.name ?? name;
+
+/** The kind of attack an alarm from this detector points to (fed to attackCategory). */
+const DETECTOR_CLUES: Record<string, string> = { live_dos: "dos", live_access: "brute force", live_bot: "botnet" };
+export const detectorClue = (name: string) => DETECTOR_CLUES[name] ?? "";
 export const detectorKnows = (name: string) => DETECTORS[name]?.knows ?? null;
 
 /** Dataset labels (e.g. "DoS Hulk", "FTP-Patator") as "Plain name (original)". */

@@ -171,7 +171,11 @@ def read_incidents(r: redis.Redis, source: str = "all", query: str = "", limit: 
 
     for alert in reversed(read_alerts(r, bus.ALERTS_KEPT)):
         i = get(f"flow-{alert['record_id']}", alert["record_id"])
-        ml = i["ml"] = i["ml"] or {"detectors": [], "resolutions": [], "counselors": []}
+        ml = i["ml"] = i["ml"] or {"detectors": [], "resolutions": [], "counselors": [], "origins": []}
+        # a cross-checked alarm belongs to the counselor that recognised the attack
+        origin = alert["counselor"] if alert["resolution"] == "cross_check" and alert["counselor"] else alert["detector"]
+        if origin not in ml["origins"]:
+            ml["origins"].append(origin)
         for field, value in (("detectors", alert["detector"]), ("resolutions", alert["resolution"]),
                              ("counselors", alert["counselor"])):
             if value and value not in ml[field]:

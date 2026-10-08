@@ -17,7 +17,9 @@ export type Incident = {
   dst: string | null;
   label: string | null;
   source: IncidentSource;
-  ml: { detectors: string[]; resolutions: string[]; counselors: string[] } | null;
+  /** origins: the detectors that raised the alarm themselves (a cross-checked alarm
+   *  belongs to the counselor that recognised the attack, not to the detector that asked) */
+  ml: { detectors: string[]; resolutions: string[]; counselors: string[]; origins: string[] } | null;
   snort: {
     rules: string[];
     ids: string[];
@@ -48,7 +50,9 @@ export function buildIncidents(alerts: Alert[], snortAlerts: SnortAlert[]): Inci
 
   for (const a of alerts) {
     const incident = get(`flow-${a.record_id}`, a.record_id);
-    incident.ml ??= { detectors: [], resolutions: [], counselors: [] };
+    incident.ml ??= { detectors: [], resolutions: [], counselors: [], origins: [] };
+    const origin = a.resolution === "cross_check" && a.counselor ? a.counselor : a.detector;
+    if (!incident.ml.origins.includes(origin)) incident.ml.origins.push(origin);
     if (!incident.ml.detectors.includes(a.detector)) incident.ml.detectors.push(a.detector);
     if (!incident.ml.resolutions.includes(a.resolution)) incident.ml.resolutions.push(a.resolution);
     if (a.counselor && !incident.ml.counselors.includes(a.counselor)) incident.ml.counselors.push(a.counselor);

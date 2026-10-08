@@ -125,12 +125,7 @@ export function LiveStatus({ live }: { live: LiveState }) {
             resume on its own as soon as the network is back — no need to restart anything.
           </p>
         )}
-        <div className="mt-4 grid grid-cols-2 gap-4 border-t border-line pt-4 sm:grid-cols-4">
-          <Stat label="Connections checked" value={count(checked)} />
-          <Stat label="Flagged by the AI" value={count(flagged)} />
-          <Stat label="Rule checker alarms" value={live.snort ? count(live.snort.alerts) : "off"} />
-          <Stat label="AI detectors" value={String(Object.keys(live.detectors).length)} />
-        </div>
+        {/* the numbers themselves are in the summary right below */}
         <Health health={live.health} />
         <p className="mt-3 text-xs text-muted">To stop, press Ctrl+C in the terminal where live monitoring was started.</p>
       </section>

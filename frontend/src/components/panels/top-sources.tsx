@@ -1,3 +1,4 @@
+import { isLocalIp } from "@/lib/blocking";
 import { count } from "@/lib/format";
 import type { Breakdown } from "@/lib/types";
 
@@ -29,7 +30,10 @@ export function TopSources({ sources }: { sources: Breakdown["sources"] }) {
           <tbody>
             {sources.map((s) => (
               <tr key={s.ip} className="border-t border-line">
-                <td className="tabular py-1.5 pr-3 text-ink">{s.ip}</td>
+                <td className="tabular py-1.5 pr-3 text-ink">
+                  {s.ip}
+                  {isLocalIp(s.ip) && <span className="ml-1.5 text-muted" title="An address on your own network, often this computer">(your network)</span>}
+                </td>
                 {(["ml", "snort"] as const).map((key) => (
                   <td key={key} className="py-1.5 pr-3">
                     <div className="flex items-center gap-2">

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { isLocalIp } from "@/lib/blocking";
 import { clock, count } from "@/lib/format";
 import type { Incident } from "@/lib/incidents";
 import { ATTACK_INFO } from "@/lib/plain";
@@ -35,6 +36,12 @@ function AttackerCard({ attacker, reputation }: { attacker: Attacker; reputation
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="tabular font-semibold text-ink">{attacker.ip}</span>
+            {isLocalIp(attacker.ip) && (
+              <span className="rounded border border-line px-1.5 py-0 text-[10px] font-medium uppercase tracking-wide text-ink-2"
+                    title="An address on your own network, often this computer. Its alarms may be your own ordinary traffic: check them before acting.">
+                Your network
+              </span>
+            )}
             {reputation?.listed && (
               <span className="rounded border border-[var(--status-critical)] px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-critical"
                     title={`On the ${reputation.source} blocklist of known-bad IPs`}>

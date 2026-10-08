@@ -50,9 +50,18 @@ export default function OverviewPage() {
   const live = useLive();
   const incidents = useMemo(() => buildIncidents(live.alerts, live.snortAlerts), [live.alerts, live.snortAlerts]);
   const breakdown = live.breakdown;
+  // each flagged connection once, credited to the detector that recognised the attack
+  // (a double-checked alarm belongs to the counselor, not to the detector that asked)
   const byDetector = useMemo(() => {
+    const seen = new Set<string>();
     const counts: Record<string, number> = {};
-    for (const a of live.alerts) counts[a.detector] = (counts[a.detector] ?? 0) + 1;
+    for (const a of live.alerts) {
+      const origin = a.resolution === "cross_check" && a.counselor ? a.counselor : a.detector;
+      const key = `${a.record_id}|${origin}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      counts[origin] = (counts[origin] ?? 0) + 1;
+    }
     return counts;
   }, [live.alerts]);
 
@@ -74,7 +83,7 @@ export default function OverviewPage() {
         <BreakdownChart
           title="AI: which detector raised the alarms"
           tag="Fig.5 · By detector"
-          subtitle="Recent AI alarms, by the specialist detector that raised them"
+          subtitle="Recent suspicious connections, by the specialist detector that recognised the attack"
           counts={byDetector}
           color={SOURCE_COLORS.ml}
           format={detectorName}
@@ -87,7 +96,7 @@ export default function OverviewPage() {
           counts={breakdown?.snort_rules ?? {}}
           color={SOURCE_COLORS.snort}
           format={ruleName}
-          empty="The rule checker runs on live traffic and on recorded captures (Test page)."
+          empty={live.snort ? "No rule checker alarms yet." : "The rule checker runs on live traffic and on recorded captures (Test page)."}
         />
       </div>
 

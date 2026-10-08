@@ -87,6 +87,7 @@ suppress =
     { gid = 1, sid = 404 },    -- PROTOCOL-ICMP Destination Unreachable Protocol Unreachable
     { gid = 1, sid = 408 },    -- PROTOCOL-ICMP Echo Reply
     { gid = 1, sid = 449 },    -- PROTOCOL-ICMP Time-To-Live Exceeded in Transit
+    { gid = 1, sid = 459 },    -- PROTOCOL-ICMP unassigned type 1: misfires on IPv6 housekeeping
     { gid = 1, sid = 29456 },  -- PROTOCOL-ICMP Unusual PING detected
     { gid = 1, sid = 1917 },   -- INDICATOR-SCAN UPnP service discover attempt
 }

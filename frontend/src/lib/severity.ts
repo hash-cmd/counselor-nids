@@ -1,7 +1,8 @@
 /** Severity scoring and attacker correlation — turns a flat alert list into ranked,
  *  prioritised incidents and "attack stories" grouped by who is doing it. */
 
-import { attackCategory, type Category, ATTACK_INFO } from "./plain";
+import { attackCategory, type Category, ATTACK_INFO, detectorClue } from "./plain";
+import { isLocalIp } from "./blocking";
 import type { Incident } from "./incidents";
 
 export type Tier = "critical" | "high" | "medium" | "low";
@@ -12,9 +13,13 @@ const CATEGORY_WEIGHT: Record<Category, number> = {
   dos: 62, bruteforce: 58, "web-xss": 48, web: 46, smb: 40, rdp: 38, scan: 32, unknown: 42,
 };
 
+/** What kind of activity it is: Snort's rule, else the known label, else the specialty of
+ *  the AI detector that recognised it. */
 function clueText(incident: Incident): string {
   if (incident.snort?.rules.length) return incident.snort.rules.join(" ");
-  return incident.label ?? "unknown";
+  if (incident.label) return incident.label;
+  if (incident.ml?.origins?.length) return incident.ml.origins.map(detectorClue).join(" ");
+  return "unknown";
 }
 
 export function categoryOf(incident: Incident): Category {
@@ -30,6 +35,8 @@ export function severityScore(incident: Incident): number {
   if (incident.source === "both") score += 18;
   // The rule checker fired but the AI judged it normal — more likely a false alarm.
   else if (incident.source === "snort" && incident.snort?.ml_verdict === "normal") score -= 14;
+  // Only the AI saw it: one method, uncorroborated.
+  else if (incident.source === "ml") score -= 10;
 
   // Breadth: a host-level alert covering many connections (a scan/flood/sweep).
   const flows = incident.snort?.flows ?? 1;
@@ -45,7 +52,8 @@ export function tierOf(score: number): Tier {
 export const TIER_META: Record<Tier, { label: string; color: string; order: number }> = {
   critical: { label: "Critical", color: "var(--status-critical)", order: 3 },
   high: { label: "High", color: "var(--status-warning)", order: 2 },
-  medium: { label: "Medium", color: "var(--series-3)", order: 1 },
+  // not a status colour: green means "good" and must not mark a suspicious connection
+  medium: { label: "Medium", color: "var(--ink-secondary)", order: 1 },
   low: { label: "Low", color: "var(--ink-muted)", order: 0 },
 };
 
@@ -100,13 +108,25 @@ function threatProfile(worst: number, categories: Category[], targets: number, c
   return { score, tier: tierOf(score), badges };
 }
 
-/** Group incidents by the source IP behind them into ranked attacker profiles.
+/** The suspect and the target of an incident. Normally the source and the destination;
+ *  but for a connection between your network and the internet the suspect is the outside
+ *  party, whichever side opened it — a laptop opening connections to many servers is a
+ *  client, not a "multi-target attacker", and an infected machine is a victim of the
+ *  outside server it calls. */
+export function suspectOf(incident: Incident): { suspect: string | null; target: string | null } {
+  const src = ipOf(incident.src);
+  const dst = ipOf(incident.dst);
+  if (src && dst && isLocalIp(src) && !isLocalIp(dst)) return { suspect: dst, target: src };
+  return { suspect: src, target: dst };
+}
+
+/** Group incidents by the suspect behind them into ranked attacker profiles.
  *  Benign (false-alarm) incidents are left out. */
 export function groupByAttacker(incidents: Incident[]): Attacker[] {
   const byIp = new Map<string, Incident[]>();
   for (const incident of incidents) {
     if (severityScore(incident) === 0) continue;
-    const ip = ipOf(incident.src);
+    const ip = suspectOf(incident).suspect;
     if (!ip) continue;
     (byIp.get(ip) ?? byIp.set(ip, []).get(ip)!).push(incident);
   }
@@ -119,8 +139,8 @@ export function groupByAttacker(incidents: Incident[]): Attacker[] {
     for (const i of ordered) {
       const c = categoryOf(i);
       if (!categories.includes(c)) categories.push(c);
-      const dst = ipOf(i.dst);
-      if (dst) targets.add(dst);
+      const target = suspectOf(i).target;
+      if (target) targets.add(target);
     }
     const score = Math.max(...list.map(severityScore));
     const times = ordered.map((i) => i.time).filter((t): t is number => t != null);

@@ -75,7 +75,10 @@ export function KpiStrip({ live, incidents }: { live: LiveState; incidents: Inci
     { label: "Connections checked", ...split(count(flows)), hint: `by ${detectors.length} AI detector${detectors.length === 1 ? "" : "s"}` },
     { label: "Flagged by the AI", ...split(count(flagged)), hint: flows ? `${percent(flagged / flows, 1)} of connections` : undefined },
     { label: "Rule checker alarms", ...split(snort ? count(snort.alerts) : "—"),
-      hint: snort ? `on ${count(snort.flows.both + snort.flows.snort_only)} connections` : "recorded or live only" },
+      hint: snort
+        ? `on ${count(snort.flows.both + snort.flows.snort_only)} connections` +
+          (snort.unmatched ? ` · ${count(snort.unmatched)} not tied to one (e.g. ICMP, IPv6)` : "")
+        : "recorded or live only" },
     { label: "AI agrees with rule checker", ...split(decided ? percent(snort!.confirmed / decided, 1) : "—"),
       hint: decided ? `${count(snort!.confirmed)} of ${count(decided)} alarms` : undefined },
   ];
