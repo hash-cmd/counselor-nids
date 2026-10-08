@@ -23,7 +23,7 @@ import pandas as pd
 import redis
 
 from ..datasets.flow_features import python_flows_to_2017
-from . import extractor, flow_index
+from . import bus, extractor, flow_index
 
 
 def _numeric(df: pd.DataFrame) -> pd.DataFrame:
@@ -71,11 +71,14 @@ def carries_payload(flows: pd.DataFrame) -> pd.Series:
     return (total(_FWD_LEN) > 0) | (total(_BWD_LEN) > 0)
 
 
-def _follow_csv(path: str, process: subprocess.Popen, poll: float = 0.5):
-    """Yield DataFrames of new rows appended to a CSV until the process exits."""
+def _follow_csv(path: str, process: subprocess.Popen, poll: float = 0.5, heartbeat=None):
+    """Yield DataFrames of new rows appended to a CSV until the process exits.
+    ``heartbeat`` is called on every poll, even when no rows arrive."""
     header, offset, buffer = None, 0, ""
     while True:
         alive = process.poll() is None
+        if heartbeat:
+            heartbeat()
         if os.path.exists(path):
             with open(path) as f:
                 f.seek(offset)
@@ -92,9 +95,51 @@ def _follow_csv(path: str, process: subprocess.Popen, poll: float = 0.5):
         time.sleep(poll)
 
 
+LIVE_TTL = 15  # seconds; refreshed while capturing, so a crashed capture stops showing as live
+
+
+def interface_up(name: str) -> bool:
+    """True when the network interface exists and is up (Linux /sys)."""
+    try:
+        with open(f"/sys/class/net/{name}/operstate") as f:
+            return f.read().strip() in ("up", "unknown")  # some links (VPNs, Wi-Fi drivers) say "unknown"
+    except OSError:
+        return False
+
+
+def _stream(r: redis.Redis, out: str, process: subprocess.Popen, source: str, batch_size: int,
+            drop_empty_flows: bool, next_id: int, heartbeat=None) -> tuple[int, int]:
+    """Follow one flow-meter run and publish its flows. Returns (flows sent, next record id)."""
+    sent, pending = 0, []
+    for flows in _follow_csv(out, process, heartbeat=heartbeat):
+        flows = python_flows_to_2017(connection_columns(flows))
+        flows["record_id"] = range(next_id, next_id + len(flows))
+        flow_index.index_flows(r, flows.rename(columns={"conn_dst_port": "dst_port"}))
+        next_id += len(flows)
+        if drop_empty_flows:
+            flows = flows[carries_payload(flows)]
+        if len(flows):
+            pending.append(flows)
+        if pending and (sum(map(len, pending)) >= batch_size or process.poll() is not None):
+            batch = pd.concat(pending, ignore_index=True)
+            # every detector sees this same flow stream, so advice matches on record_id
+            extractor.publish(r, batch, source)
+            sent += len(batch)
+            pending = []
+    if pending:
+        batch = pd.concat(pending, ignore_index=True)
+        extractor.publish(r, batch, source)
+        sent += len(batch)
+    return sent, next_id
+
+
 def capture(r: redis.Redis, interface_or_pcap: str, source: str, batch_size: int = 100,
-            drop_empty_flows: bool = True) -> int:
+            drop_empty_flows: bool = True, retry_wait: float = 3.0) -> int:
     """Capture from an interface (or read a .pcap file) and publish flows. Returns flows sent.
+
+    On a network interface, capture survives the interface dropping (Wi-Fi disconnecting,
+    a cable unplugged): when the flow meter stops, it waits for the interface to come back
+    and starts it again, so monitoring resumes on its own. A recording is read once.
 
     ``drop_empty_flows`` keeps connection-only flows (scans, failed connections) out of
     the ML detectors — they carry no signal the detectors learned and only add false
@@ -104,33 +149,52 @@ def capture(r: redis.Redis, interface_or_pcap: str, source: str, batch_size: int
         import cicflowmeter  # noqa: F401
     except ImportError:
         raise RuntimeError("cicflowmeter not installed: pip install -e '.[live]'") from None
-    mode = "--file" if interface_or_pcap.endswith((".pcap", ".pcapng")) else "--interface"
-    out = os.path.join(tempfile.mkdtemp(prefix="nids-live-"), "flows.csv")
-    process = subprocess.Popen(
-        [sys.executable, "-m", "nids.capture.flowmeter", mode, interface_or_pcap, out])
+    live = not interface_or_pcap.endswith((".pcap", ".pcapng"))
+    mode = "--interface" if live else "--file"
 
-    sent, next_id, pending = 0, 0, []
+    heartbeat = None
+    if live:  # tell the dashboard what is being watched (recordings are not "live")
+        r.hset(bus.LIVE, mapping={"target": interface_or_pcap, "started_at": time.time(), "state": "capturing"})
+        r.expire(bus.LIVE, LIVE_TTL)
+
+        def heartbeat():
+            r.expire(bus.LIVE, LIVE_TTL)
+
+    sent, next_id, quick_failures = 0, 0, 0
     try:
-        for flows in _follow_csv(out, process):
-            flows = python_flows_to_2017(connection_columns(flows))
-            flows["record_id"] = range(next_id, next_id + len(flows))
-            flow_index.index_flows(r, flows.rename(columns={"conn_dst_port": "dst_port"}))
-            next_id += len(flows)
-            if drop_empty_flows:
-                flows = flows[carries_payload(flows)]
-            if len(flows):
-                pending.append(flows)
-            if pending and (sum(map(len, pending)) >= batch_size or process.poll() is not None):
-                batch = pd.concat(pending, ignore_index=True)
-                # every detector sees this same flow stream, so advice matches on record_id
-                extractor.publish(r, batch, source)
-                sent += len(batch)
-                pending = []
-        if pending:
-            batch = pd.concat(pending, ignore_index=True)
-            extractor.publish(r, batch, source)
-            sent += len(batch)
+        while True:
+            out = os.path.join(tempfile.mkdtemp(prefix="nids-live-"), "flows.csv")
+            process = subprocess.Popen(
+                [sys.executable, "-m", "nids.capture.flowmeter", mode, interface_or_pcap, out])
+            began = time.time()
+            try:
+                n, next_id = _stream(r, out, process, source, batch_size, drop_empty_flows, next_id, heartbeat)
+                sent += n
+            finally:
+                process.terminate()
+            if not live:
+                break
+
+            # The flow meter stopped on its own — usually the interface went down.
+            if time.time() - began < 10 and interface_up(interface_or_pcap):
+                quick_failures += 1  # it dies straight away although the link is up: a real fault
+                if quick_failures >= 5:
+                    raise RuntimeError(f"capture on {interface_or_pcap} keeps stopping right after it "
+                                       "starts; see the flow-meter output above")
+            else:
+                quick_failures = 0
+            print(f"capture on {interface_or_pcap} stopped; waiting for it to come back", flush=True)
+            r.hset(bus.LIVE, "state", "waiting")
+            heartbeat()
+            time.sleep(retry_wait)
+            while not interface_up(interface_or_pcap):
+                heartbeat()
+                time.sleep(retry_wait)
+            r.hset(bus.LIVE, "state", "capturing")
+            heartbeat()
+            print(f"{interface_or_pcap} is back; capture resumed", flush=True)
     finally:
-        process.terminate()
+        if live:
+            r.delete(bus.LIVE)
         extractor.end(r, source)
     return sent

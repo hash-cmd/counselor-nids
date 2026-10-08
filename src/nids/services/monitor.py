@@ -69,6 +69,15 @@ def read_breakdown(r: redis.Redis, n: int = 8) -> dict:
     }
 
 
+def read_live(r: redis.Redis) -> dict | None:
+    """The interface being captured and since when, or None if no live capture runs."""
+    live = {bus.text(k): bus.text(v) for k, v in r.hgetall(bus.LIVE).items()}
+    if not live.get("target"):
+        return None
+    return {"target": live["target"], "started_at": float(live.get("started_at", 0)),
+            "state": live.get("state", "capturing")}  # "waiting": the interface is down
+
+
 def read_activity(r: redis.Redis) -> str:
     """"running" while detector services are processing a stream, "ended" once they all
     finished it, "idle" when none are running."""

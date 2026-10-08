@@ -84,7 +84,7 @@ export default function AlertsPage() {
               ? `${count(data.total)} suspicious connection${data.total === 1 ? "" : "s"}${source !== "all" || query ? " match" : ""}`
               : "Loading…"
           }
-          empty={error ?? (data?.counts.all ? "No alerts match your search." : "No alerts yet. Start a test on the Overview page, or watch your network live.")}
+          empty={error ?? (data?.counts.all ? "No alerts match your search." : "No alerts yet. Start live monitoring, or run a test on the Test page.")}
           actions={<IncidentFilters source={source} onSource={changeSource} query={query} onQuery={changeQuery} counts={data?.counts ?? null} />}
           footer={
             data && data.incidents.length < data.total && (

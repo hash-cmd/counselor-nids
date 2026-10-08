@@ -11,6 +11,8 @@ All services talk to Redis at $NIDS_REDIS_URL (default redis://localhost:6379/0)
 """
 
 import argparse
+import signal
+import sys
 from pathlib import Path
 
 import joblib
@@ -43,6 +45,10 @@ def extract(args) -> None:
         extractor.wait_for_subscribers(r, args.wait_for)
     if args.live:
         from .services import live_capture
+        if not args.live.endswith((".pcap", ".pcapng")):
+            # start.sh stops services with SIGTERM; exit through the normal path so the
+            # flow meter is stopped and the dashboard stops showing live monitoring.
+            signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
         sent = live_capture.capture(r, args.live, args.source, args.batch_size,
                                      drop_empty_flows=not args.keep_empty_flows)
     else:

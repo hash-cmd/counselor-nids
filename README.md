@@ -144,9 +144,10 @@ A web dashboard shows the detection as it happens:
 
 | Page | |
 |---|---|
-| **Overview** | traffic controls, headline numbers with a plain-language verdict and severity breakdown, the top-risk attackers, ML vs Snort detections over time, who flagged each flow, attack types and Snort rules, latest alerts |
+| **Overview** | live-monitoring status (which interface is watched, since when, or how to start it), headline numbers with a plain-language verdict and severity breakdown, the top-risk attackers, ML vs Snort detections over time, who flagged each flow, attack types and Snort rules, latest alerts |
 | **Alerts** | every flagged flow once, each with a **severity** (Critical/High/Medium/Low) and a plain explanation; an **Attackers** view grouping alerts by source IP into ranked "attack stories" (scan → brute force → …) with behavioural threat scoring (escalating / persistent / multi-target); filter, full-history server-side search, and a Print/PDF report |
 | **Detectors** | each ML detector: counters, throughput, how decisions were made (unanimous / counselor advice / cross-check / fallback) |
+| **Test with recordings** | replay a packet capture or labelled flow records with known attacks (with or without Snort) and see what the system catches — kept apart from live monitoring and disabled while it runs |
 | **Results** | the experiment comparisons and self-learning curves |
 
 The dashboard is written for a non-expert (AI / rule checker rather than ML / Snort), with a
@@ -246,7 +247,7 @@ nids snort --pcap data/pcap/real-attacks-2018.pcap &
 nids extract --live data/pcap/real-attacks-2018.pcap --source live --wait-for 2
 ```
 
-Or pick the capture in the dashboard and tick **Run Snort on the same traffic**. Live:
+Or pick the capture on the dashboard's **Test with recordings** page and tick **Run Snort on the same traffic**. Live:
 `sudo nids snort --interface eth0` next to `sudo nids extract --live eth0 ...`; with an
 existing Snort, `nids snort --follow /var/log/snort/alert_json.txt` (it needs the `seconds`,
 address, port and `proto` fields in `alert_json`).

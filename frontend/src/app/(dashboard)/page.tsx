@@ -7,7 +7,7 @@ import { BreakdownChart } from "@/components/charts/breakdown-chart";
 import { DetectionTimeline, SOURCE_COLORS } from "@/components/charts/detection-timeline";
 import { IncidentsTable } from "@/components/panels/incidents";
 import { KpiStrip } from "@/components/panels/kpi-strip";
-import { TrafficControls } from "@/components/panels/traffic-controls";
+import { LiveStatus } from "@/components/panels/live-status";
 import { AttackersPanel } from "@/components/panels/attackers";
 import { OverlapChart } from "@/components/charts/overlap-chart";
 import { TopSources } from "@/components/panels/top-sources";
@@ -52,8 +52,8 @@ export default function OverviewPage() {
 
   return (
     <>
+      <LiveStatus live={live} />
       <HowItWorks />
-      <TrafficControls status={live.replay} activity={live.activity} />
       <KpiStrip live={live} incidents={incidents} />
 
       {/* Hero row: the activity timeline paired with the ranked top-risk side panel.
@@ -81,7 +81,7 @@ export default function OverviewPage() {
           counts={breakdown?.snort_rules ?? {}}
           color={SOURCE_COLORS.snort}
           format={ruleName}
-          empty="The rule checker runs on recorded or live traffic. Choose “Recorded network traffic” above."
+          empty="The rule checker runs on live traffic and on recorded captures (Test page)."
         />
       </div>
 

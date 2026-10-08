@@ -190,6 +190,17 @@ class ReplayTests(LoggedInTestCase):
     def test_stop_without_replay(self):
         self.assertEqual(self.client.post("/api/replay/stop/").status_code, 409)
 
+    def test_refuses_while_live_monitoring_runs(self):
+        """A test resets the shared state, so it must not start over a live session."""
+        (self.root / "models" / "detector1.joblib").write_bytes(b"")
+        self.redis.hset(bus.LIVE, mapping={"target": "wlan0", "started_at": 1, "state": "capturing"})
+        with mock.patch("api.replay.Popen") as popen:
+            response = self.client.post("/api/replay/start/", {"replay": "demo.csv"}, format="json")
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("live monitoring is running on wlan0", response.json()["detail"])
+        popen.assert_not_called()
+        self.assertTrue(self.redis.exists(bus.LIVE))  # the live session was left alone
+
     def fake_popen(self, started):
         class FakeProcess:
             def __init__(self, command, **kwargs):

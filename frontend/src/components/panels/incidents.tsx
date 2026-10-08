@@ -235,7 +235,7 @@ export function IncidentsTable({
   incidents,
   actions,
   footer,
-  empty = "No alerts yet. Start a test above, or watch your network live.",
+  empty = "No alerts yet. Start live monitoring, or run a test on the Test page.",
   subtitle = "Each suspicious connection once, with what the AI and the rule checker said about it",
 }: {
   incidents: Incident[];

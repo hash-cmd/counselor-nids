@@ -22,7 +22,10 @@ const NAV: { heading: string; items: NavItem[] }[] = [
   },
   {
     heading: "Evaluation",
-    items: [{ href: "/results", label: "Test results", hint: "How well it scores in tests", icon: <IconChart /> }],
+    items: [
+      { href: "/test", label: "Test with recordings", hint: "Replay known attacks to check detection", icon: <IconPlay /> },
+      { href: "/results", label: "Test results", hint: "How well it scores in tests", icon: <IconChart /> },
+    ],
   },
 ];
 
@@ -212,6 +215,9 @@ function IconBell() {
 }
 function IconChip() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>;
+}
+function IconPlay() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z"/></svg>;
 }
 function IconChart() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>;

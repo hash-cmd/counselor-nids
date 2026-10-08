@@ -19,7 +19,8 @@ class DetectorsView(APIView):
     def get(self, request):
         r = get_redis()
         return Response({"detectors": monitor.read_stats(r), "breakdown": monitor.read_breakdown(r),
-                         "activity": monitor.read_activity(r), "replay": replay.manager.status()})
+                         "activity": monitor.read_activity(r), "live": monitor.read_live(r),
+                         "replay": replay.manager.status()})
 
 
 class ReputationView(APIView):

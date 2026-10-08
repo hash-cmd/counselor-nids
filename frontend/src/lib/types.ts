@@ -52,6 +52,9 @@ export type Breakdown = {
 
 export type Activity = "idle" | "running" | "ended";
 
+/** The network interface being captured, while `./start.sh live <iface>` runs. */
+export type LiveCapture = { target: string; started_at: number; /** "waiting": the interface is down, capture resumes when it is back */ state: "capturing" | "waiting" };
+
 export type ReplayOptions = {
   replays: { name: string; kind: "flows" | "pcap"; size_mb: number; description: string | null }[];
   models: string[];

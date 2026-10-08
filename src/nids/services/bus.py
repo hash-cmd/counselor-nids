@@ -8,6 +8,7 @@
     nids:advice:reply:<uuid>  list     one advice reply
     nids:stats:<detector>     hash     running counters
     nids:alerts               stream   attack decisions
+    nids:live                 hash     interface and start time while live capture runs
 """
 
 import io
@@ -23,6 +24,7 @@ ENDED = f"{PREFIX}:ended"
 ALERTS = f"{PREFIX}:alerts"
 ALERTS_KEPT = 50_000  # entries kept per alert stream (ML and Snort)
 SNORT_ACTIVE = f"{PREFIX}:snort:active"  # set while the Snort correlator still needs advice
+LIVE = f"{PREFIX}:live"  # {"target", "started_at"} while capturing a network interface
 
 # Running counts behind the dashboard's breakdowns (hashes: name -> count).
 FLAGGED_ML = f"{PREFIX}:flagged:ml"                   # set of flows any detector flagged

@@ -32,7 +32,7 @@ function Verdict({ checked, suspicious, running, incidents }: {
   if (checked === 0) {
     return (
       <p className="text-sm text-ink-2">
-        {running ? "Waiting for the first connections…" : "Nothing is being watched right now. Start a test above, or a live capture."}
+        {running ? "Waiting for the first connections…" : "Nothing is being watched right now. Start live monitoring to check your network."}
       </p>
     );
   }

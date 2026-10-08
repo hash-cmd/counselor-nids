@@ -24,7 +24,7 @@ export function DetectorTiles({ detectors }: { detectors: Record<string, Detecto
   if (names.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-line bg-surface p-8 text-center text-sm text-ink-2">
-        No detectors are running. Start a test on the Overview page to watch them work.
+        No detectors are running. Start live monitoring (see the Overview), or run a test on the Test page.
       </div>
     );
   }

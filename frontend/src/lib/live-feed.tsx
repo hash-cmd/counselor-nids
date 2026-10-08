@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
 
 import { api, ApiError, WS_URL } from "./api";
-import type { Activity, Alert, Breakdown, DetectorStats, ReplayStatus, SnortAlert, SnortSummary } from "./types";
+import type { Activity, Alert, LiveCapture, Breakdown, DetectorStats, ReplayStatus, SnortAlert, SnortSummary } from "./types";
 
 const MAX_ALERTS = 500;
 const MAX_POINTS = 180; // ~3 minutes at one stats message per second
@@ -16,6 +16,8 @@ export type LiveState = {
   replay: ReplayStatus;
   /** running while detector services process a stream — a replay or `./start.sh live` */
   activity: Activity;
+  /** set while a network interface is being captured live (not for recordings) */
+  live: LiveCapture | null;
   alerts: Alert[];
   /** Snort running next to the ML: summary (null when Snort is not running) and alerts. */
   snort: SnortSummary | null;
@@ -34,6 +36,7 @@ const initial: LiveState = {
   detectors: {},
   replay: { state: "idle" },
   activity: "idle",
+  live: null,
   alerts: [],
   snort: null,
   snortAlerts: [],
@@ -130,6 +133,7 @@ function useLiveFeed(onSessionEnd: () => void): LiveState {
             snort: message.snort ?? null,
             breakdown: message.breakdown ?? null,
             activity: message.activity ?? "idle",
+            live: message.live ?? null,
             replay: message.replay,
             flaggedRate: append(s.flaggedRate, points.flagged),
             sampleRate: append(s.sampleRate, points.samples),

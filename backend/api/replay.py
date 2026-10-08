@@ -20,7 +20,7 @@ from subprocess import STDOUT, Popen
 
 from django.conf import settings
 
-from nids.services import bus
+from nids.services import bus, monitor
 
 from .redis_client import get_redis
 
@@ -123,6 +123,10 @@ class ReplayManager:
                 raise ReplayError("no trained models: run `nids train scenario2` first")
 
             r = get_redis()
+            live = monitor.read_live(r)
+            if live:  # a test resets the shared state, which would wipe the live session
+                raise ReplayError(f"live monitoring is running on {live['target']}: stop it "
+                                  "(Ctrl+C in its terminal) before starting a test")
             bus.reset(r)
             run = Run(id=str(int(time.time() * 1000)), replay=replay, kind=kind, snort=snort, rate=rate,
                       cross_check=cross_check, min_accuracy=min_accuracy,

@@ -49,8 +49,9 @@ class LiveConsumer(AsyncJsonWebsocketConsumer):
             snort = await asyncio.to_thread(monitor.read_snort, r)
             breakdown = await asyncio.to_thread(monitor.read_breakdown, r)
             activity = await asyncio.to_thread(monitor.read_activity, r)
+            live = await asyncio.to_thread(monitor.read_live, r)
             await self.send_json({"type": "stats", "detectors": stats, "snort": snort,
-                                  "breakdown": breakdown, "activity": activity,
+                                  "breakdown": breakdown, "activity": activity, "live": live,
                                   "replay": replay.manager.status(), "time": time.time()})
 
             snort_alerts = await asyncio.to_thread(monitor.read_snort_alerts, r, MAX_ALERTS, last_snort)

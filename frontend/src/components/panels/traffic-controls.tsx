@@ -38,7 +38,12 @@ const STATE_LABELS: Record<Exclude<ReplayStatus["state"], "idle">, string> = {
   running: "Test running", finished: "Test finished", stopped: "Test stopped", failed: "Test failed",
 };
 
-export function TrafficControls({ status, activity }: { status: ReplayStatus; activity: Activity }) {
+export function TrafficControls({ status, activity, liveCapture = false }: {
+  status: ReplayStatus;
+  activity: Activity;
+  /** a network interface is being captured live — tests must not start over it */
+  liveCapture?: boolean;
+}) {
   const [options, setOptions] = useState<ReplayOptions | null>(null);
   const [kind, setKind] = useState<Kind>("pcap");
   const [files, setFiles] = useState<Record<Kind, string>>({ pcap: "", flows: "" });
@@ -60,7 +65,7 @@ export function TrafficControls({ status, activity }: { status: ReplayStatus; ac
   }, []);
 
   const running = status.state === "running";
-  const liveRunning = status.state === "idle" && activity === "running";
+  const liveRunning = liveCapture || (status.state === "idle" && activity === "running");
   const replay = files[kind];
   const noModels = options && options.models.length === 0;
   const badge = statusLabel(status, activity);
