@@ -76,22 +76,27 @@ Reproduce it with `python scripts/live_detectors/evaluate_capture.py --no-commun
 
 | Traffic | Flows | AI | Snort | Either |
 |---|---|---|---|---|
-| DoS GoldenEye | 2,020 | 100.0% | 4.5% | 100.0% |
-| DoS Hulk | 4,062 | 99.6% | 33.9% | 99.6% |
+| DoS GoldenEye | 1,822 | 99.1% | 4.9% | 99.1% |
+| DoS Hulk | 2,861 | 99.9% | 48.2% | 99.9% |
 | DoS SlowHTTPTest | 4,450 | 100.0% | 99.8% | 100.0% |
-| DoS Slowloris | 1,178 | 66.9% | 0.0% | 66.9% |
+| DoS Slowloris | 760 | 34.7% | 0.0% | 34.7% |
 | FTP brute force | 5,040 | 100.0% | 99.8% | 100.0% |
-| SSH brute force | 364 | 98.4% | 87.6% | 98.9% |
+| SSH brute force | 359 | 98.3% | 88.9% | 98.9% |
 | Web attacks | 4 | 4 of 4 | 4 of 4 | 4 of 4 |
 | Botnet | 540 | 99.6% | 0.0% | 99.6% |
-| **Normal (false alarms)** | 1,750 | **0.0%** | **0.2%** | **0.2%** |
+| **Normal (false alarms)** | 1,570 | **0.0%** | **0.3%** | **0.3%** |
+
+On the test split, the latest 20% of every attack, the detectors catch **99.1%** of attack
+flows, with false alarms on **2 of 5,192** normal flows (0.04%).
 
 - **The two checks cover each other.** The AI catches the floods and the botnet that Snort's
   rules miss. Snort covers website attacks with its payload rules.
-- **Slowloris is the weak spot.** The detectors were trained on recordings whose slow
-  connections the flow meter cut at random points, so they learned a distorted picture of
-  Slowloris. That's now fixed (see [Retraining](#retraining-the-detectors)), and the
-  detectors are being retrained.
+- **Slowloris is the weak spot,** and how much of it is caught depends on the attack's phase:
+  85% of test flows across the attack, 60% of the complete last five minutes, and 35% of the
+  last three, when the attack winds down (above). With the community rules on, Snort's
+  Challenge-ACK rule lifts the last three minutes to 69.5% "either". Retraining on correctly
+  measured connections (see [Retraining](#retraining-the-detectors)) raised it from 56% to 85%
+  on the test split, and from 50% to 60% on the last five minutes.
 - **Website attacks are Snort's job.** The AI has only ~150 website-attack training flows,
   too few to rely on, so the project's rules lead:
   - SQL injection: UNION SELECT; a quote followed by an AND/OR comparison; ORDER BY column
@@ -102,8 +107,8 @@ Reproduce it with `python scripts/live_detectors/evaluate_capture.py --no-commun
   On the whole 2018 website-attack capture they alert on **188 of the attacker's 207
   connections (90.8%)**, and on nothing else.
 - **A botnet host it never saw.** On a third infected host whose traffic was never used for
-  training (`cross_host.py`), the system catches **99.7%** of its 15,240 botnet flows, with
-  **0 false alarms** on its 4,456 normal flows.
+  training (`cross_host.py`), the system catches **99.8%** of its 15,238 botnet flows, with
+  false alarms on **2 of its 4,307** normal flows.
 
 **Keeping false alarms down on live traffic:**
 

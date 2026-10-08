@@ -1,63 +1,77 @@
 {
-  "promoted_at": "2026-10-08T18:19:18+00:00",
+  "promoted_at": "2026-10-08T20:06:12+00:00",
   "knowledge": {
     "live_dos": [
       "DoS-GoldenEye",
       "DoS-Slowloris",
       "DoS-Hulk",
-      "DoS-SlowHTTPTest"
+      "DoS-SlowHTTPTest",
+      "DDoS"
     ],
     "live_access": [
       "FTP-BruteForce",
       "SSH-Bruteforce",
-      "Web-attack"
+      "Web-attack",
+      "PortScan"
     ],
     "live_bot": [
       "Bot"
     ]
   },
   "metrics": {
-    "accuracy": 0.9943806387462256,
-    "detection_rate": 0.9939321105616737,
-    "false_alarm_rate": 0.0
+    "accuracy": 0.9921459171751266,
+    "detection_rate": 0.9912007019938576,
+    "false_alarm_rate": 0.0003852080123266564
   },
   "by_label": {
     "DoS-SlowHTTPTest": 1.0,
-    "FTP-BruteForce": 0.9999656144694312,
-    "DoS-Hulk": 0.9959680129023587,
-    "DoS-GoldenEye": 0.9890203355756592,
-    "Benign": 0.0,
-    "DoS-Slowloris": 0.9356696281671603,
-    "Bot": 0.9986410405746458,
-    "SSH-Bruteforce": 0.9957882069795427,
-    "Web-attack": 0.8787878787878788
+    "DoS-Hulk": 0.9994485294117647,
+    "Benign": 0.0003852080123266564,
+    "FTP-BruteForce": 1.0,
+    "Bot": 0.9982517482517482,
+    "DoS-GoldenEye": 0.9988252569750367,
+    "DoS-Slowloris": 0.84533702677747,
+    "SSH-Bruteforce": 0.9901477832512315,
+    "Web-attack": 0.9285714285714286
   },
   "test_flows": {
-    "DoS-SlowHTTPTest": 31665,
-    "FTP-BruteForce": 29082,
-    "DoS-Hulk": 14881,
-    "DoS-GoldenEye": 12933,
-    "Benign": 8103,
-    "DoS-Slowloris": 6078,
-    "Bot": 5151,
-    "SSH-Bruteforce": 1662,
-    "Web-attack": 66
+    "DoS-SlowHTTPTest": 21110,
+    "DoS-Hulk": 5440,
+    "Benign": 5192,
+    "FTP-BruteForce": 4416,
+    "Bot": 3432,
+    "DoS-GoldenEye": 3405,
+    "DoS-Slowloris": 2166,
+    "SSH-Bruteforce": 1015,
+    "Web-attack": 42
   },
+  "labs": [
+    "2018",
+    "2017"
+  ],
   "sha256": {
     "live_access.joblib": "15a99237836dc4f4852cc7a318305037461cf5b96717306136774b6d0fe59df6",
     "live_bot.joblib": "9fe43995b91a3f4e5bda508b999d22c936c2b422a7ab271057a2cedeb6844a33",
-    "live_dos.joblib": "28183ee263a0e9a1361e2e34f728f5e520db7c83b9d92c031a48c7c86b67f49a"
+    "live_dos.joblib": "4218f4afb37e9f1e26e747454637611a673c14c34d396968376fdcbb3522a051"
   },
   "args": {
-    "train_share": 0.7,
+    "train_share": 0.8,
     "min_accuracy": 0.9,
     "seed": 0,
-    "max_per_label": 15000,
+    "labs": [
+      "2018",
+      "2017"
+    ],
+    "train_labs": null,
+    "test_labs": null,
+    "max_per_label": null,
     "only": [
-      "live_bot"
+      "live_dos"
     ],
     "max_drop": 0.02,
     "max_fa_rise": 0.0005,
-    "force": false
+    "force": false,
+    "evaluate_only": false,
+    "results": "live"
   }
 }
