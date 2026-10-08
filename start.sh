@@ -256,6 +256,8 @@ cmd_live() {
 
   say "starting observer and ${#models[@]} detectors"
   run_service observer "$NIDS" observe
+  # live alerts are also kept in logs/journal/ — `nids journal-report` gives the false-alarm rate
+  [[ "$target" == /* ]] || run_service journal "$NIDS" journal
   for model in "${models[@]}"; do
     run_service "detect-$(basename "$model" .joblib)" "$NIDS" detect "$model" --sources live --cross-check --suppress-fallback
   done

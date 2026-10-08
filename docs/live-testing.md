@@ -58,12 +58,21 @@ The lab numbers and a few minutes of live capture can't tell you how noisy the s
 *your* traffic over time. To find out, leave it running and read the numbers:
 
 1. `./start.sh live wlan0` and use your network normally for a few days (browsing, streaming,
-   video calls, package updates, backups — the full range of what you do).
-2. Each day, note the Overview's headline — connections checked, flagged by the AI, and the
-   severity breakdown — and skim the **Alerts** page. On ordinary traffic almost everything
-   should be **Low**; investigate any **ML only** alert on normal browsing as a false alarm.
-3. A healthy result is a handful of false alarms per day or fewer. If a particular normal
-   activity trips the AI repeatedly, note the source/port and the attack type it was called —
+   video calls, package updates, backups — the full range of what you do). Restarting is
+   fine: live mode keeps every alert in `logs/journal/` (one file per day), across runs.
+2. Write down when you ran any attack tests on purpose, so they are not counted.
+3. Read the numbers at any time:
+
+   ```bash
+   .venv/bin/nids journal-report --exclude 2026-10-09T14:00 2026-10-09T14:30
+   ```
+
+   It reports hours watched, connections checked, connections the ML flagged (per 1,000
+   connections and per hour, by detector and by connection), and Snort's alerts with whether
+   the ML agreed. With no attacks running, every ML alert outside the excluded times is a
+   false alarm. `--exclude START END` can be repeated.
+4. A healthy result is a handful of false alarms per day or fewer. If a particular normal
+   activity trips the AI repeatedly, `top_connections` shows the source and destination —
    that's the signal for what to retrain on or which Snort rule to tune.
 
 This is the honest gap the experiments leave open, and the only way to know whether to trust

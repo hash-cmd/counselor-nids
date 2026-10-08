@@ -6,6 +6,8 @@
     nids extract data/replay/scenario2.csv --source cicids2017 --wait-for 2
     nids monitor
     nids snort --pcap capture.pcap           # Snort + link its alerts to flows and ML verdicts
+    nids journal                             # keep every live alert in logs/journal/
+    nids journal-report --exclude 2026-10-08T14:00 2026-10-08T15:00   # false alarms
 
 All services talk to Redis at $NIDS_REDIS_URL (default redis://localhost:6379/0).
 """
@@ -91,6 +93,26 @@ def snort(args) -> None:
     print("snort:", stats)
 
 
+def journal(args) -> None:
+    from .services import bus
+    from .services import journal as j
+
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    print(f"journal: writing to {args.dir}", flush=True)
+    j.run(bus.connect(args.redis), args.dir)
+
+
+def journal_report(args) -> None:
+    import json
+    from datetime import datetime
+
+    from .services import journal as j
+
+    windows = [(datetime.fromisoformat(a).timestamp(), datetime.fromisoformat(b).timestamp())
+               for a, b in args.exclude or []]
+    print(json.dumps(j.report(j.read(args.dir), windows), indent=2))
+
+
 def reset(args) -> None:
     from .services import bus
 
@@ -156,6 +178,16 @@ def main(argv=None) -> None:
     p.add_argument("--config", type=Path, default=PROJECT_ROOT / "snort" / "nids.lua")
     p.add_argument("--include-path", default="/etc/snort", help="where snort_defaults.lua lives")
     p.set_defaults(func=snort)
+
+    p = sub.add_parser("journal", help="keep every live alert on disk, to measure false alarms")
+    p.add_argument("--dir", type=Path, default=PROJECT_ROOT / "logs" / "journal")
+    p.set_defaults(func=journal)
+
+    p = sub.add_parser("journal-report", help="false alarms recorded by the journal")
+    p.add_argument("--dir", type=Path, default=PROJECT_ROOT / "logs" / "journal")
+    p.add_argument("--exclude", nargs=2, action="append", metavar=("START", "END"),
+                   help="leave out a time you ran attacks on purpose (local ISO times); repeatable")
+    p.set_defaults(func=journal_report)
 
     p = sub.add_parser("reset", help="delete all nids:* keys in Redis")
     p.set_defaults(func=reset)
