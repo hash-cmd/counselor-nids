@@ -33,6 +33,16 @@ alert http any any -> any any ( msg:"NIDS SQL injection attempt (UNION SELECT)";
 alert http any any -> any any ( msg:"NIDS SQL injection attempt (OR 1=1)"; http_uri; content:"' or 1=1",nocase; classtype:web-application-attack; sid:9000002; rev:1; )
 alert http any any -> any any ( msg:"NIDS cross-site scripting attempt (<script>)"; http_uri; content:"<script",nocase; classtype:web-application-attack; sid:9000003; rev:1; )
 alert http any any -> any any ( msg:"NIDS path traversal attempt (/etc/passwd)"; http_uri; content:"/etc/passwd"; classtype:web-application-attack; sid:9000004; rev:1; )
+# The URI buffer is percent-decoded with "+" read as a space, so encoded payloads match too.
+# Each pattern needs SQL or script syntax that ordinary URLs and forms do not contain.
+alert http any any -> any any ( msg:"NIDS SQL injection attempt (quote then AND/OR comparison)"; http_uri; content:"'"; pcre:"/'\s*(and|or)\s+['\x22]?\w+['\x22]?\s*=\s*['\x22]?\w+/i"; classtype:web-application-attack; sid:9000005; rev:1; )
+alert http any any -> any any ( msg:"NIDS SQL injection attempt (ORDER BY column probing)"; http_uri; content:"'"; pcre:"/'.*\border\s+by\s+\d+/i"; classtype:web-application-attack; sid:9000006; rev:1; )
+alert http any any -> any any ( msg:"NIDS SQL injection attempt (information_schema)"; http_uri; content:"information_schema",nocase; classtype:web-application-attack; sid:9000007; rev:1; )
+alert http any any -> any any ( msg:"NIDS cross-site scripting attempt (event handler or javascript:)"; http_uri; pcre:"/(javascript:|\bon(error|load|mouseover|focus)\s*=)/i"; classtype:web-application-attack; sid:9000008; rev:1; )
+# The same payloads sent in a form (POST body) rather than the URL.
+alert http any any -> any any ( msg:"NIDS SQL injection attempt in form (UNION SELECT)"; http_client_body; content:"union",nocase; content:"select",nocase,distance 0; classtype:web-application-attack; sid:9000012; rev:1; )
+alert http any any -> any any ( msg:"NIDS cross-site scripting attempt in form (<script>)"; http_client_body; content:"<script",nocase; classtype:web-application-attack; sid:9000013; rev:1; )
+alert http any any -> any any ( msg:"NIDS SQL injection attempt in form (quote then AND/OR comparison)"; http_client_body; content:"'"; pcre:"/'\s*(and|or)\s+['\x22]?\w+['\x22]?\s*=\s*['\x22]?\w+/i"; classtype:web-application-attack; sid:9000014; rev:1; )
 
 # SYN floods target a service port; limiting to web ports keeps port-scan probes
 # (also SYN bursts to one host) from being reported as a flood.
@@ -46,3 +56,5 @@ alert http any any -> any any ( msg:"NIDS HTTP request flood"; http_method; cont
 # connections in two minutes (data transfers and SSH multiplexing reuse connections).
 alert tcp any any -> any 22 ( msg:"NIDS SSH brute force (repeated login attempts)"; flags:S; detection_filter:track by_src, count 15, seconds 120; classtype:attempted-admin; sid:9000020; rev:2; )
 alert tcp any any -> any 21 ( msg:"NIDS FTP brute force (repeated login attempts)"; flags:S; detection_filter:track by_src, count 10, seconds 120; classtype:attempted-admin; sid:9000021; rev:2; )
+# Website login brute force: a person retypes a password a few times, a tool posts hundreds.
+alert http any any -> any any ( msg:"NIDS web login brute force (repeated password posts)"; http_method; content:"POST"; http_client_body; content:"password=",nocase; detection_filter:track by_src, count 20, seconds 60; classtype:attempted-user; sid:9000022; rev:1; )

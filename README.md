@@ -255,22 +255,41 @@ address, port and `proto` fields in `alert_json`).
 
 On `real-attacks-2018.pcap` — real CSE-CIC-IDS2018 traffic from the late part of each attack,
 which the live detectors never trained on — the whole system (flow meter, live detectors,
-Snort, correlator) flags:
+Snort with the project's rules, alert-to-flow linking) flags
+(`python scripts/live_detectors/evaluate_capture.py --no-community`):
 
 | Traffic | Flows | ML (live detectors) | Snort | Either |
 |---|---|---|---|---|
-| DoS GoldenEye | 2,046 | 100.0% | 4.4% | 100.0% |
-| DoS Hulk | 4,153 | 99.6% | 30.5% | 99.6% |
-| DoS SlowHTTPTest | 4,450 | 100.0% | 99.6% | 100.0% |
-| DoS Slowloris | 1,352 | 56.7% | 0.0% | 56.7% |
-| FTP brute force | 5,040 | 100.0% | 99.6% | 100.0% |
-| SSH brute force | 359 | 98.3% | 76.3% | 98.9% |
-| Web attacks | 4 | 4 of 4 | 0 | 4 of 4 |
-| **Normal (false alarms)** | 1,768 | **0.0%** | **0.0%** | **0.0%** |
+| DoS GoldenEye | 2,020 | 100.0% | 4.5% | 100.0% |
+| DoS Hulk | 4,062 | 99.6% | 33.9% | 99.6% |
+| DoS SlowHTTPTest | 4,450 | 100.0% | 99.8% | 100.0% |
+| DoS Slowloris | 1,178 | 66.9% | 0.0% | 66.9% |
+| FTP brute force | 5,040 | 100.0% | 99.8% | 100.0% |
+| SSH brute force | 364 | 98.4% | 87.6% | 98.9% |
+| Web attacks | 4 | 4 of 4 | 4 of 4 | 4 of 4 |
+| Botnet | 540 | 99.6% | 0.0% | 99.6% |
+| **Normal (false alarms)** | 1,750 | **0.0%** | **0.2%** | **0.2%** |
 
-The ML confirms 11,077 of Snort's 11,079 alerts and catches the DoS attacks Snort's rules
-miss; Snort adds its payload rules. Slowloris is the weak spot, and varies between runs
-(57-67%): the flow meter times flows out by wall clock, so slow connections split differently.
+The ML catches the DoS attacks and the botnet that Snort's rules miss; Snort covers web
+attacks with its payload rules. Slowloris is the weak spot, and varies between runs
+(57-67%): the flow meter times flows out by wall clock, so slow connections split
+differently. With the community rules on, the Challenge-ACK rule (below) lifts Slowloris to
+79% "either".
+
+**Website attacks are Snort's job.** The ML has ~150 web-attack training flows, too few to
+trust (its web-attack rate swings between retrains), so the project's rules lead:
+SQL injection (UNION SELECT; a quote followed by an AND/OR comparison; ORDER BY column
+probing; `information_schema`), cross-site scripting (`<script`, event handlers,
+`javascript:`) in the URL or a form, and **login brute force** (20 password posts from one
+source in 60 s). On the whole 2018 web-attack capture (`Thursday-22-02-2018`) they alert on
+**188 of the attacker's 207 connections (90.8%)** — 1,027 XSS, 3,413 brute-force and 39
+SQL-injection alerts — and on nothing else; on the normal workstation capture they raise no
+alert at all.
+
+**Checksums.** Snort used to drop packets with a bad TCP checksum, and those are normal
+wherever the network card fills checksums in (offloading): ~40% of the 2018 web capture, and
+your own machine's outgoing traffic in live mode. Snort raised no web-attack alert at all on
+that capture until `nids.lua` set `checksum_eval = 'none'`.
 
 `demo-attacks.pcap` is **synthetic** (generated packets): Snort catches its attacks but the
 live detectors, trained on real traffic, flag none of them — a reminder that the ML only knows
@@ -287,10 +306,12 @@ rule misses, fires on none of a benign FTP session (control + passive-data conne
 still flags only the attackers (not the benign workstation) on `real-attacks-2018.pcap`. Snort
 is not in the Docker image (Debian has no package), so in Docker pcap replays run with the ML only.
 
-The table above uses the project's 34 rules (`snort/rules/nids.rules`) only. `./start.sh setup`
+The table above uses the project's 42 rules (`snort/rules/nids.rules`) only. `./start.sh setup`
 also downloads the 4,017 **Snort 3 community rules** (exploits, malware, C2, policy) into
 `snort/rules/community/`, which `nids.lua` loads when present; `NIDS_SNORT_COMMUNITY=0` leaves
-them out. On `real-attacks-2018.pcap` they add 859 alerts to Snort's 11,079:
+them out. Rules that report ordinary behaviour (pings, ICMP errors, short DNS TTLs, UPnP
+discovery) are suppressed in `nids.lua`: on the normal workstation capture they fired
+~3,800 times. On the earlier `real-attacks-2018.pcap` the community rules added:
 
 | Community rule | Alerts | On |
 |---|---|---|

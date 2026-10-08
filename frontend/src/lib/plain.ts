@@ -6,7 +6,7 @@ const DETECTORS: Record<string, { name: string; knows: string }> = {
   detector2: { name: "Detector 2", knows: "large-scale flooding (DDoS) and port scans" },
   detector3: { name: "Detector 3", knows: "password guessing, infected machines and website attacks" },
   live_dos: { name: "Flood detector", knows: "flooding attacks that overload a server (DoS)" },
-  live_access: { name: "Break-in detector", knows: "password guessing and website attacks" },
+  live_access: { name: "Break-in detector", knows: "password guessing, and some website attacks (the rule checker is the main defence against those: it learned from too few examples)" },
   live_bot: { name: "Botnet detector", knows: "infected machines secretly checking in with an attacker's control server (botnet)" },
 };
 

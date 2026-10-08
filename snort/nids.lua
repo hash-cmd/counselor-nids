@@ -11,6 +11,13 @@ EXTERNAL_NET = 'any'
 
 include 'snort_defaults.lua'
 
+-- Do not drop packets with bad checksums. Network cards compute checksums in hardware
+-- (offloading), so a capture on the sending machine — your own laptop's outgoing traffic,
+-- or the CSE-CIC-IDS2018 servers' captures — holds packets whose checksum is not filled in
+-- yet. Snort skipped them by default: on the 2018 web-attack capture (~40% such packets) it
+-- raised no web-attack alert at all; ignoring checksums, it flags the attacks.
+network = { checksum_eval = 'none' }
+
 stream = { }
 stream_ip = { }
 stream_icmp = { }
@@ -63,6 +70,25 @@ ips =
     enable_builtin_rules = false,
     rules = rules,
     variables = default_variables,
+}
+
+-- Community rules that report ordinary network behaviour, not attacks. With checksums
+-- ignored they fired thousands of times on the dataset's normal workstation (e.g. 2,674
+-- "DNS response with 1-minute TTL", ~1,500 pings and replies); ping sweeps are still
+-- reported by the port_scan inspector. Policy rules (RDP, SMB) stay on: they flag exposure.
+suppress =
+{
+    { gid = 1, sid = 254 },    -- PROTOCOL-DNS SPOOF query response with TTL of 1 min
+    { gid = 1, sid = 366 },    -- PROTOCOL-ICMP PING Unix
+    { gid = 1, sid = 368 },    -- PROTOCOL-ICMP PING BSDtype
+    { gid = 1, sid = 384 },    -- PROTOCOL-ICMP PING
+    { gid = 1, sid = 385 },    -- PROTOCOL-ICMP traceroute
+    { gid = 1, sid = 402 },    -- PROTOCOL-ICMP destination unreachable port unreachable
+    { gid = 1, sid = 404 },    -- PROTOCOL-ICMP Destination Unreachable Protocol Unreachable
+    { gid = 1, sid = 408 },    -- PROTOCOL-ICMP Echo Reply
+    { gid = 1, sid = 449 },    -- PROTOCOL-ICMP Time-To-Live Exceeded in Transit
+    { gid = 1, sid = 29456 },  -- PROTOCOL-ICMP Unusual PING detected
+    { gid = 1, sid = 1917 },   -- INDICATOR-SCAN UPnP service discover attempt
 }
 
 alert_json =
