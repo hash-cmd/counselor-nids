@@ -1,8 +1,12 @@
+import os
+from pathlib import Path
+
+from django.conf import settings
 from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from nids.services import monitor
+from nids.services import journal, monitor
 
 from . import replay, reputation, results
 from .redis_client import get_redis
@@ -101,3 +105,47 @@ class ReplayStopView(APIView):
             return Response(replay.manager.stop())
         except replay.ReplayError as error:
             return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
+
+
+def journal_dir() -> Path:
+    return Path(os.environ.get("NIDS_JOURNAL_DIR", settings.NIDS_ROOT / "logs" / "journal"))
+
+
+class JournalView(APIView):
+    """False alarms recorded by the live alert journal over the last ?days= (default 7),
+    leaving out the attack tests marked on the dashboard."""
+
+    def get(self, request):
+        try:
+            days = min(max(int(request.query_params.get("days", 7)), 1), 365)
+        except ValueError:
+            return Response({"detail": "days must be a number"}, status=status.HTTP_400_BAD_REQUEST)
+        folder = journal_dir()
+        tests = journal.read_tests(folder)
+        report = journal.report(journal.read(folder, days), journal.windows(tests))
+        return Response({"days": days, "report": report, "tests": tests})
+
+
+class JournalTestSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(["start", "stop", "delete"])
+    note = serializers.CharField(required=False, allow_blank=True, max_length=200, default="")
+    index = serializers.IntegerField(required=False, min_value=0)
+
+
+class JournalTestsView(APIView):
+    """Mark an attack test: {"action": "start", "note"} / {"action": "stop"} /
+    {"action": "delete", "index"}. Alerts during a test are not counted as false alarms."""
+
+    def post(self, request):
+        body = JournalTestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        action, folder = body.validated_data["action"], journal_dir()
+        if action == "start":
+            tests = journal.start_test(body.validated_data["note"], folder)
+        elif action == "stop":
+            tests = journal.stop_test(folder)
+        else:
+            if "index" not in body.validated_data:
+                return Response({"detail": "delete needs an index"}, status=status.HTTP_400_BAD_REQUEST)
+            tests = journal.delete_test(body.validated_data["index"], folder)
+        return Response({"tests": tests})

@@ -351,3 +351,42 @@ class ByLabelResultsTests(LoggedInTestCase):
                                             "flagged": {"detectors 1+2": 0.0, "detectors 1+2+3": 0.99}})
         self.assertEqual(table["summary"]["detectors 1+2"]["accuracy"], 0.3)
         self.assertNotIn("live", body)
+
+
+class JournalTests(LoggedInTestCase):
+    def setUp(self):
+        super().setUp()
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.root = Path(folder.name)
+        override = override_settings(NIDS_ROOT=self.root)
+        override.enable()
+        self.addCleanup(override.disable)
+
+    def test_report_and_attack_tests(self):
+        import time
+        now = time.time()
+        journal_dir = self.root / "logs" / "journal"
+        journal_dir.mkdir(parents=True)
+        lines = [{"kind": "tick", "time": now - 120, "run": "1", "flows": 0},
+                 {"kind": "tick", "time": now - 60, "run": "1", "flows": 2000},
+                 {"kind": "ml", "time": now - 90, "run": "1", "record_id": "5", "detector": "live_dos",
+                  "src": "10.0.0.9:5000", "dst": "10.0.0.1:443"}]
+        day = time.strftime("%Y-%m-%d", time.localtime(now - 60))
+        (journal_dir / f"{day}.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
+
+        body = self.client.get("/api/journal/").json()
+        self.assertEqual(body["report"]["flows_analysed"], 2000)
+        self.assertEqual(body["report"]["ml"]["per_1000_flows"], 0.5)
+        self.assertEqual(body["tests"], [])
+
+        tests = self.client.post("/api/journal/tests/", {"action": "start", "note": "nmap"}, format="json").json()
+        self.assertIsNone(tests["tests"][0]["end"])
+        tests = self.client.post("/api/journal/tests/", {"action": "stop"}, format="json").json()
+        self.assertIsNotNone(tests["tests"][0]["end"])
+        self.assertEqual(self.client.post("/api/journal/tests/", {"action": "delete"}, format="json").status_code, 400)
+        tests = self.client.post("/api/journal/tests/", {"action": "delete", "index": 0}, format="json").json()
+        self.assertEqual(tests["tests"], [])
+
+    def test_bad_days(self):
+        self.assertEqual(self.client.get("/api/journal/?days=x").status_code, 400)

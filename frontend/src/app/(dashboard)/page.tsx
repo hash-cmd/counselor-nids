@@ -9,6 +9,7 @@ import { IncidentsTable } from "@/components/panels/incidents";
 import { KpiStrip } from "@/components/panels/kpi-strip";
 import { LiveStatus } from "@/components/panels/live-status";
 import { AttackersPanel } from "@/components/panels/attackers";
+import { FalseAlarms } from "@/components/panels/false-alarms";
 import { OverlapChart } from "@/components/charts/overlap-chart";
 import { TopSources } from "@/components/panels/top-sources";
 import { buildIncidents } from "@/lib/incidents";
@@ -94,6 +95,8 @@ export default function OverviewPage() {
       ) : (
         <TopSources sources={breakdown?.sources ?? []} />
       )}
+
+      <FalseAlarms />
 
       <IncidentsTable
         incidents={incidents.slice(0, 10)}

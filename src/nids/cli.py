@@ -109,8 +109,8 @@ def journal_report(args) -> None:
     from .services import journal as j
 
     windows = [(datetime.fromisoformat(a).timestamp(), datetime.fromisoformat(b).timestamp())
-               for a, b in args.exclude or []]
-    print(json.dumps(j.report(j.read(args.dir), windows), indent=2))
+               for a, b in args.exclude or []] + j.windows(j.read_tests(args.dir))
+    print(json.dumps(j.report(j.read(args.dir, args.days), windows), indent=2))
 
 
 def reset(args) -> None:
@@ -186,7 +186,9 @@ def main(argv=None) -> None:
     p = sub.add_parser("journal-report", help="false alarms recorded by the journal")
     p.add_argument("--dir", type=Path, default=PROJECT_ROOT / "logs" / "journal")
     p.add_argument("--exclude", nargs=2, action="append", metavar=("START", "END"),
-                   help="leave out a time you ran attacks on purpose (local ISO times); repeatable")
+                   help="leave out a time you ran attacks on purpose (local ISO times); repeatable. "
+                        "Tests marked on the dashboard are left out too")
+    p.add_argument("--days", type=int, help="only the last N days (default: everything)")
     p.set_defaults(func=journal_report)
 
     p = sub.add_parser("reset", help="delete all nids:* keys in Redis")

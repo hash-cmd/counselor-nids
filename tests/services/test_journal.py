@@ -60,3 +60,20 @@ def test_report_counts_flows_across_runs_and_excludes_attack_tests():
     assert out["ml"]["by_detector"] == {"live_dos": 2, "live_bot": 1}
     assert out["excluded_test_alerts"] == {"ml": 1, "snort": 0}
     assert out["snort"]["by_agreement"] == {"disputed": 1}
+
+
+def test_attack_tests_are_saved_and_excluded(tmp_path):
+    journal.start_test("nmap scan", tmp_path, now=100.0)
+    journal.start_test("second start is ignored while one runs", tmp_path, now=110.0)
+    assert journal.windows(journal.read_tests(tmp_path), now=150.0) == [(100.0, 150.0)]
+    journal.stop_test(tmp_path, now=200.0)
+    tests = journal.read_tests(tmp_path)
+    assert tests == [{"start": 100.0, "end": 200.0, "note": "nmap scan"}]
+
+    entries = [tick(0, 0), tick(60, 100), alert(150, 3), alert(250, 4)]
+    out = journal.report(entries, exclude=journal.windows(tests))
+    assert out["ml"]["flagged_flows"] == 1 and out["excluded_test_alerts"]["ml"] == 1
+    assert sum(d["ml_flagged"] for d in out["daily"]) == 1
+    assert sum(d["flows"] for d in out["daily"]) == 100
+
+    assert journal.delete_test(0, tmp_path) == []

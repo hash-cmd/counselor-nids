@@ -126,3 +126,22 @@ export type Results = {
   comparisons: Record<string, { detectors: Record<string, ComparisonRow[]>; args: Record<string, unknown> | null }>;
   self_learning: Record<string, SelfLearningRow[]>;
 };
+
+export type AttackTest = { start: number; end: number | null; note: string };
+
+export type JournalReport = {
+  hours_watched: number;
+  flows_analysed: number;
+  ml: {
+    flagged_flows: number;
+    per_1000_flows: number | null;
+    per_hour: number | null;
+    by_detector: Record<string, number>;
+    top_connections: Record<string, number>;
+  };
+  snort: { alerts: number; by_agreement: Record<string, number>; top_rules: Record<string, number> };
+  excluded_test_alerts: { ml: number; snort: number };
+  daily: { day: string; flows: number; hours: number; ml_flagged: number; snort: number }[];
+};
+
+export type Journal = { days: number; report: JournalReport; tests: AttackTest[] };
