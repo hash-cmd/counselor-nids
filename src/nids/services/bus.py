@@ -9,10 +9,13 @@
     nids:stats:<detector>     hash     running counters
     nids:alerts               stream   attack decisions
     nids:live                 hash     interface and start time while live capture runs
+    nids:health               hash     service -> JSON heartbeat {"at", "pid", ...}
 """
 
 import io
+import json
 import os
+import time
 
 import pandas as pd
 import redis
@@ -25,6 +28,7 @@ ALERTS = f"{PREFIX}:alerts"
 ALERTS_KEPT = 50_000  # entries kept per alert stream (ML and Snort)
 SNORT_ACTIVE = f"{PREFIX}:snort:active"  # set while the Snort correlator still needs advice
 LIVE = f"{PREFIX}:live"  # {"target", "started_at"} while capturing a network interface
+HEALTH = f"{PREFIX}:health"
 
 # Running counts behind the dashboard's breakdowns (hashes: name -> count).
 FLAGGED_ML = f"{PREFIX}:flagged:ml"                   # set of flows any detector flagged
@@ -79,6 +83,15 @@ def text(value) -> str:
 def field(fields: dict, key: str) -> str | None:
     value = fields.get(key.encode(), fields.get(key))
     return value.decode() if isinstance(value, bytes) else value
+
+
+def beat(r: redis.Redis, service: str, **info) -> None:
+    """Record that ``service`` is alive (read by ``monitor.read_health``). Never raises: a
+    failed heartbeat must not stop the service it reports on."""
+    try:
+        r.hset(HEALTH, service, json.dumps({"at": time.time(), "pid": os.getpid(), **info}))
+    except redis.RedisError:
+        pass
 
 
 def reset(r: redis.Redis) -> int:

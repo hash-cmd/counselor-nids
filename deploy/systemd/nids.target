@@ -1,0 +1,8 @@
+# Counselor NIDS: everything for live monitoring. Rendered by deploy/install-systemd.sh.
+[Unit]
+Description=Counselor NIDS (live monitoring and dashboard)
+Wants=redis-server.service nids-api.service nids-web.service nids-capture.service nids-observer.service nids-snort.service nids-journal.service nids-health.timer
+After=network-online.target redis-server.service
+
+[Install]
+WantedBy=multi-user.target

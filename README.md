@@ -136,7 +136,9 @@ Flows come from the Python `cicflowmeter`, run through `nids.capture.flowmeter`,
 around two bugs in cicflowmeter 0.5.0: its CLI passes arguments in the wrong order, and a flow
 without forward packets crashes its flow-writing thread (live capture would silently stop).
 Live traffic is analysed by the **live detectors** (below), not the CSV-trained ones. See
-[docs/live-testing.md](docs/live-testing.md) for testing on your own network.
+[docs/live-testing.md](docs/live-testing.md) for testing on your own network, and
+[docs/deployment.md](docs/deployment.md) to run it permanently as systemd services (restart on
+failure, least privilege, `nids health` checks, log rotation).
 
 ## Dashboard (Django API + Next.js)
 
@@ -439,7 +441,8 @@ nids/
 ├── pyproject.toml          the nids Python package and its dependencies
 ├── docker-compose.yml      container stack (redis, api, web; headless services)
 ├── docker/                 api.Dockerfile, web.Dockerfile
-├── docs/                   paper/ (the source paper), datasets.md, live-testing.md
+├── deploy/                 systemd units and their installer (install-systemd.sh)
+├── docs/                   paper/ (the source paper), datasets.md, live-testing.md, deployment.md
 ├── src/nids/               the core library and the `nids` command
 │   ├── datasets/           loaders: NSL-KDD, CICIDS2017, CSE-CIC-IDS2018; feature-name mapping
 │   ├── capture/            pcap reading and slicing, remote-zip fetching, the flow meter runner

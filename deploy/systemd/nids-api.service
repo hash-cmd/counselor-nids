@@ -1,0 +1,18 @@
+[Unit]
+Description=Counselor NIDS API (Daphne)
+After=redis-server.service
+PartOf=nids.target
+
+[Service]
+User=@USER@
+EnvironmentFile=/etc/nids/nids.env
+EnvironmentFile=-@ROOT@/backend/.env
+WorkingDirectory=@ROOT@/backend
+NoNewPrivileges=yes
+ExecStartPre=@ROOT@/.venv/bin/python manage.py migrate --noinput -v 0
+ExecStart=@ROOT@/.venv/bin/daphne -b 127.0.0.1 -p 8000 config.asgi:application
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=nids.target

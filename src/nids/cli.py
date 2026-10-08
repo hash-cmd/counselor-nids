@@ -6,6 +6,7 @@
     nids extract data/replay/scenario2.csv --source cicids2017 --wait-for 2
     nids monitor
     nids snort --pcap capture.pcap           # Snort + link its alerts to flows and ML verdicts
+    nids health                              # which services are alive (exit 1 if any is down)
     nids journal                             # keep every live alert in logs/journal/
     nids journal-report --exclude 2026-10-08T14:00 2026-10-08T15:00   # false alarms
 
@@ -93,13 +94,30 @@ def snort(args) -> None:
     print("snort:", stats)
 
 
+def health(args) -> None:
+    from .services import bus, monitor
+
+    try:
+        services = monitor.read_health(bus.connect(args.redis))
+    except Exception as e:  # Redis itself is down
+        print(f"redis: DOWN ({e})")
+        sys.exit(2)
+    if not services:
+        print("no services have reported (nothing running?)")
+        sys.exit(1)
+    for s in services:
+        extra = " ".join(f"{k}={v}" for k, v in s.items() if k not in ("service", "ok", "age"))
+        print(f"{s['service']:24s} {'ok  ' if s['ok'] else 'DOWN'}  last seen {s['age']:>6.1f}s ago  {extra}")
+    sys.exit(0 if all(s["ok"] for s in services) else 1)
+
+
 def journal(args) -> None:
     from .services import bus
     from .services import journal as j
 
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     print(f"journal: writing to {args.dir}", flush=True)
-    j.run(bus.connect(args.redis), args.dir)
+    j.run(bus.connect(args.redis), args.dir, keep_days=args.keep_days)
 
 
 def journal_report(args) -> None:
@@ -179,8 +197,12 @@ def main(argv=None) -> None:
     p.add_argument("--include-path", default="/etc/snort", help="where snort_defaults.lua lives")
     p.set_defaults(func=snort)
 
+    p = sub.add_parser("health", help="which services are alive; exit 1 if any is down, 2 if Redis is")
+    p.set_defaults(func=health)
+
     p = sub.add_parser("journal", help="keep every live alert on disk, to measure false alarms")
     p.add_argument("--dir", type=Path, default=PROJECT_ROOT / "logs" / "journal")
+    p.add_argument("--keep-days", type=int, default=365, help="delete day files older than this")
     p.set_defaults(func=journal)
 
     p = sub.add_parser("journal-report", help="false alarms recorded by the journal")

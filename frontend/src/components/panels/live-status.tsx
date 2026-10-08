@@ -5,6 +5,8 @@ import { useState } from "react";
 
 import { clock, count } from "@/lib/format";
 import type { LiveState } from "@/lib/live-feed";
+import { detectorName } from "@/lib/plain";
+import type { ServiceHealth } from "@/lib/types";
 
 import { StatusBadge } from "@/components/ui/status-badge";
 
@@ -37,6 +39,34 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div>
       <p className="eyebrow">{label}</p>
       <p className="figure mt-1 text-xl font-semibold text-ink">{value}</p>
+    </div>
+  );
+}
+
+const SERVICE_NAMES: Record<string, string> = {
+  capture: "Traffic capture", observer: "Dispatcher", snort: "Rule checker (Snort)", journal: "False-alarm journal",
+};
+
+function serviceName(service: string): string {
+  return service.startsWith("detector:") ? detectorName(service.slice("detector:".length)) : SERVICE_NAMES[service] ?? service;
+}
+
+/** One chip per background service, so a crashed part is visible rather than silently missing. */
+export function Health({ health }: { health: ServiceHealth[] }) {
+  if (health.length === 0) return null;
+  const down = health.filter((s) => !s.ok);
+  return (
+    <div className="mt-4 border-t border-line pt-4">
+      <p className="eyebrow mb-2">
+        System health · {down.length ? `${down.length} part${down.length === 1 ? "" : "s"} not responding` : "all parts running"}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {health.map((s) => (
+          <span key={s.service} title={s.ok ? `last seen ${s.age}s ago` : `silent for ${Math.round(s.age)}s — see logs/`}>
+            <StatusBadge tone={s.ok ? "good" : "critical"} label={`${serviceName(s.service)}${s.ok ? "" : " · down"}`} />
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -101,6 +131,7 @@ export function LiveStatus({ live }: { live: LiveState }) {
           <Stat label="Rule checker alarms" value={live.snort ? count(live.snort.alerts) : "off"} />
           <Stat label="AI detectors" value={String(Object.keys(live.detectors).length)} />
         </div>
+        <Health health={live.health} />
         <p className="mt-3 text-xs text-muted">To stop, press Ctrl+C in the terminal where live monitoring was started.</p>
       </section>
     );

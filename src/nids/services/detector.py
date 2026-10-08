@@ -166,6 +166,7 @@ def run(
     last = "0"
     try:
         while True:
+            bus.beat(r, f"detector:{detector.name}")
             for _, messages in r.xread({bus.inbox(detector.name): last}, block=1000, count=10) or []:
                 for message_id, fields in messages:
                     last = message_id

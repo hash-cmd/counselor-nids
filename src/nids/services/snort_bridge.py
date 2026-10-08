@@ -240,6 +240,7 @@ def run(r: redis.Redis, target: str | None = None, follow: Path | None = None,
     try:
         for alert in follow_alerts(follow, snort_done):
             if alert is None:  # heartbeat
+                bus.beat(r, "snort", running=process is None or process.poll() is None)
                 correlator.process()
             else:
                 correlator.add(alert)

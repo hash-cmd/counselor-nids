@@ -77,3 +77,25 @@ def test_attack_tests_are_saved_and_excluded(tmp_path):
     assert sum(d["flows"] for d in out["daily"]) == 100
 
     assert journal.delete_test(0, tmp_path) == []
+
+
+def test_health_marks_silent_and_stopped_services_down():
+    from nids.services import monitor
+    r = fakeredis.FakeRedis()
+    bus.beat(r, "observer")
+    bus.beat(r, "snort", running=False)
+    bus.beat(r, "journal")
+    now = time.time()
+    health = {s["service"]: s for s in monitor.read_health(r, now=now)}
+    assert health["observer"]["ok"] and not health["snort"]["ok"]
+    later = {s["service"]: s["ok"] for s in monitor.read_health(r, now=now + 60)}
+    assert later == {"journal": False, "observer": False, "snort": False}
+
+
+def test_prune_keeps_recent_days(tmp_path):
+    for day in ("2026-01-01", "2026-10-01", "2026-10-08"):
+        (tmp_path / f"{day}.jsonl").write_text("{}\n")
+    now = time.mktime(time.strptime("2026-10-08 12:00", "%Y-%m-%d %H:%M"))
+    removed = journal.prune(tmp_path, keep_days=30, now=now)
+    assert [p.name for p in removed] == ["2026-01-01.jsonl"]
+    assert sorted(p.name for p in tmp_path.glob("*.jsonl")) == ["2026-10-01.jsonl", "2026-10-08.jsonl"]

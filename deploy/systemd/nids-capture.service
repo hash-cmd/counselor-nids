@@ -1,0 +1,23 @@
+# Captures the interface and publishes flows. Restarting it resets the run (record ids start
+# again from 0), so the observer, detectors and Snort bridge restart with it (PartOf).
+[Unit]
+Description=Counselor NIDS traffic capture on @INTERFACE@
+After=network-online.target redis-server.service
+Wants=network-online.target
+PartOf=nids.target
+
+[Service]
+User=@USER@
+EnvironmentFile=/etc/nids/nids.env
+WorkingDirectory=@ROOT@
+# capturing needs raw sockets, not full root
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+NoNewPrivileges=yes
+ExecStartPre=@ROOT@/.venv/bin/nids reset
+ExecStart=@ROOT@/.venv/bin/nids extract --live @INTERFACE@ --source live --wait-for @DETECTORS@
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=nids.target

@@ -1,0 +1,10 @@
+# Run by nids-health.timer. Fails (and is logged in the journal: `journalctl -u nids-health`)
+# when any service has stopped sending heartbeats or Redis is unreachable.
+[Unit]
+Description=Counselor NIDS health check
+
+[Service]
+Type=oneshot
+User=@USER@
+EnvironmentFile=/etc/nids/nids.env
+ExecStart=@ROOT@/.venv/bin/nids health

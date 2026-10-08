@@ -145,3 +145,6 @@ export type JournalReport = {
 };
 
 export type Journal = { days: number; report: JournalReport; tests: AttackTest[] };
+
+/** One service's heartbeat: ok unless it has gone quiet (or, for Snort, its process exited). */
+export type ServiceHealth = { service: string; ok: boolean; age: number } & Record<string, unknown>;

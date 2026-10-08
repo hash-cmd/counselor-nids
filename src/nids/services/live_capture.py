@@ -178,6 +178,7 @@ def capture(r: redis.Redis, interface_or_pcap: str, source: str, batch_size: int
 
         def heartbeat():
             r.expire(bus.LIVE, LIVE_TTL)
+            bus.beat(r, "capture", target=interface_or_pcap, state=bus.text(r.hget(bus.LIVE, "state") or ""))
 
     sent, next_id, quick_failures = 0, 0, 0
     try:

@@ -1,5 +1,6 @@
 """Live view of every detector's counters."""
 
+import json
 import time
 
 import pandas as pd
@@ -67,6 +68,26 @@ def read_breakdown(r: redis.Redis, n: int = 8) -> dict:
         "sources": sources[:n],
         "ml_flagged_flows": r.scard(bus.FLAGGED_ML),
     }
+
+
+STALE = 15.0  # seconds without a heartbeat before a service counts as down
+
+
+def read_health(r: redis.Redis, now: float | None = None) -> list[dict]:
+    """Every service that has reported since the last reset: {"service", "ok", "age", ...}.
+    A service is down when its heartbeat is older than STALE seconds, or (Snort) when the
+    Snort process it runs has exited."""
+    now = now or time.time()
+    out = []
+    for name, raw in r.hgetall(bus.HEALTH).items():
+        try:
+            info = json.loads(bus.text(raw))
+        except ValueError:
+            continue
+        age = max(0.0, now - float(info.pop("at", 0)))
+        ok = age < STALE and info.get("running", True) is not False
+        out.append({"service": bus.text(name), "ok": ok, "age": round(age, 1), **info})
+    return sorted(out, key=lambda s: s["service"])
 
 
 def read_live(r: redis.Redis) -> dict | None:

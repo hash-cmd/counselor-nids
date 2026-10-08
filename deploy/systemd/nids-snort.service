@@ -1,0 +1,18 @@
+[Unit]
+Description=Counselor NIDS Snort on @INTERFACE@, linked to the ML verdicts
+After=nids-capture.service
+PartOf=nids-capture.service nids.target
+
+[Service]
+User=@USER@
+EnvironmentFile=/etc/nids/nids.env
+WorkingDirectory=@ROOT@
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+NoNewPrivileges=yes
+ExecStart=@ROOT@/.venv/bin/nids snort --interface @INTERFACE@
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=nids.target

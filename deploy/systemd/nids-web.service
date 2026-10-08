@@ -1,0 +1,16 @@
+[Unit]
+Description=Counselor NIDS dashboard (Next.js production build)
+After=nids-api.service
+PartOf=nids.target
+
+[Service]
+User=@USER@
+EnvironmentFile=/etc/nids/nids.env
+WorkingDirectory=@ROOT@/frontend
+NoNewPrivileges=yes
+ExecStart=@NPX@ next start -p 3000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=nids.target

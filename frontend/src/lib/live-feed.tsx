@@ -3,7 +3,9 @@
 import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
 
 import { api, ApiError, WS_URL } from "./api";
-import type { Activity, Alert, LiveCapture, Breakdown, DetectorStats, ReplayStatus, SnortAlert, SnortSummary } from "./types";
+import type {
+  Activity, Alert, LiveCapture, Breakdown, DetectorStats, ReplayStatus, ServiceHealth, SnortAlert, SnortSummary,
+} from "./types";
 
 const MAX_ALERTS = 500;
 const MAX_POINTS = 180; // ~3 minutes at one stats message per second
@@ -23,6 +25,8 @@ export type LiveState = {
   snort: SnortSummary | null;
   snortAlerts: SnortAlert[];
   breakdown: Breakdown | null;
+  /** heartbeats of the background services (capture, observer, detectors, Snort, journal) */
+  health: ServiceHealth[];
   /** Detections per second: flows the ML flagged (any detector) and Snort alerts. */
   detectionRate: RatePoint[];
   /** Attacks flagged per second, per detector. */
@@ -41,6 +45,7 @@ const initial: LiveState = {
   snort: null,
   snortAlerts: [],
   breakdown: null,
+  health: [],
   detectionRate: [],
   flaggedRate: [],
   sampleRate: [],
@@ -134,6 +139,7 @@ function useLiveFeed(onSessionEnd: () => void): LiveState {
             breakdown: message.breakdown ?? null,
             activity: message.activity ?? "idle",
             live: message.live ?? null,
+            health: message.health ?? [],
             replay: message.replay,
             flaggedRate: append(s.flaggedRate, points.flagged),
             sampleRate: append(s.sampleRate, points.samples),

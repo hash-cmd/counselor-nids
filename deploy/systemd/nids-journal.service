@@ -1,0 +1,16 @@
+[Unit]
+Description=Counselor NIDS alert journal (false-alarm record in logs/journal/)
+After=redis-server.service
+PartOf=nids.target
+
+[Service]
+User=@USER@
+EnvironmentFile=/etc/nids/nids.env
+WorkingDirectory=@ROOT@
+NoNewPrivileges=yes
+ExecStart=@ROOT@/.venv/bin/nids journal
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=nids.target

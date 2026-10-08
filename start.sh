@@ -24,6 +24,11 @@ WEB_PORT="${WEB_PORT:-3000}"
 export NIDS_REDIS_URL="${NIDS_REDIS_URL:-redis://localhost:6379/0}"
 PROD=0
 mkdir -p "$LOGS"
+# keep logs bounded: a service log past 20 MB is moved to <name>.log.1 (one old copy kept).
+# logs/journal/ is data, not a log: `nids journal` prunes it (one year by default).
+for log in "$LOGS"/*.log; do
+  [[ -f "$log" ]] && (( $(stat -c %s "$log") > 20000000 )) && mv -f "$log" "$log.1"
+done
 
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m!!\033[0m %s\n' "$*" >&2; }

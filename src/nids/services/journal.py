@@ -54,9 +54,19 @@ class Journal:
             f.write(json.dumps(entry) + "\n")
 
 
+def prune(directory: Path, keep_days: int, now: float | None = None) -> list[Path]:
+    """Delete day files older than ``keep_days``; returns what was deleted."""
+    first = datetime.fromtimestamp((now or time.time()) - keep_days * 86400).strftime("%Y-%m-%d")
+    old = [p for p in Path(directory).glob("*.jsonl") if p.stem < first]
+    for p in old:
+        p.unlink()
+    return old
+
+
 def run(r: redis.Redis, directory: Path = DEFAULT_DIR, tick: float = 60.0, block_ms: int = 2000,
-        stop=lambda: False) -> None:
-    """Append new alerts and a tick every ``tick`` seconds until ``stop()``."""
+        stop=lambda: False, keep_days: int = 365) -> None:
+    """Append new alerts and a tick every ``tick`` seconds until ``stop()``; day files older
+    than ``keep_days`` are deleted."""
     journal = Journal(directory)
     # start after what is already there; "$" on every call would drop alerts written between calls
     last = {}
@@ -65,12 +75,14 @@ def run(r: redis.Redis, directory: Path = DEFAULT_DIR, tick: float = 60.0, block
         last[stream] = bus.text(newest[0][0]) if newest else "0-0"
     next_tick = 0.0
     while not stop():
+        bus.beat(r, "journal")
         now = time.time()
         if now >= next_tick:
             live = _decode(r.hgetall(bus.LIVE))
             journal.write({"kind": "tick", "time": now, "run": live.get("started_at", ""),
                            "target": live.get("target", ""), "state": live.get("state", ""),
                            "flows": flows_analysed(r)})
+            prune(journal.directory, keep_days, now)
             next_tick = now + tick
         for stream, entries in r.xread(last, block=block_ms) or []:
             stream = bus.text(stream)

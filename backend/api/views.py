@@ -24,6 +24,7 @@ class DetectorsView(APIView):
         r = get_redis()
         return Response({"detectors": monitor.read_stats(r), "breakdown": monitor.read_breakdown(r),
                          "activity": monitor.read_activity(r), "live": monitor.read_live(r),
+                         "health": monitor.read_health(r),
                          "replay": replay.manager.status()})
 
 
