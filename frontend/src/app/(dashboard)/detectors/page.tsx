@@ -18,8 +18,8 @@ export default function DetectorsPage() {
     <>
       <p className="max-w-3xl text-sm text-ink-2">
         The AI is a team of specialists. Each detector learned to recognise certain kinds of attack and checks
-        every connection. When a detector is unsure, it asks the others for advice, like asking a colleague, and
-        learns from the answer.
+        every connection. When a detector is unsure, it asks the others for advice, like asking a colleague; and
+        when it thinks a connection is safe, it checks with the others in case it is an attack it never learned.
       </p>
       <DetectorTiles detectors={live.detectors} />
       <div className="grid gap-4 lg:grid-cols-3">

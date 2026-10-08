@@ -16,7 +16,7 @@ const TEAMWORK = [
   ["Unsure", "conflicts", "times its own checks disagreed"],
   ["Took advice", "advised", "times another detector settled it"],
   ["Double-checked", "cross_checked", "attacks caught only because another detector spoke up"],
-  ["Learned from", "retrained_on", "connections it has since learned from"],
+  ["No help", "fallback", "times nobody could settle it (counted as normal)"],
 ] as const;
 
 export function DetectorTiles({ detectors }: { detectors: Record<string, DetectorStats> }) {

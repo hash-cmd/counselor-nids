@@ -19,8 +19,8 @@ export default function TestPage() {
   return (
     <>
       <p className="max-w-3xl text-sm text-ink-2">
-        Play back recorded traffic where the attacks are already known, to check what the system catches and how
-        often it is right. This doesn&apos;t touch live monitoring — and it can&apos;t start while live monitoring
+        Play back a recording of real attacks to see what the system catches, and which connections the AI and the
+        rule checker each flag. This doesn&apos;t touch live monitoring — and it can&apos;t start while live monitoring
         is running, so test results never mix with your real network data.
       </p>
 
