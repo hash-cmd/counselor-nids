@@ -8,7 +8,9 @@ or botnets, for instance) — so it advises only on connections it alerted on.
 
 How much a counselor's advice is worth is its accuracy. For Snort that is per rule, kept by
 ``RuleTrust``: a fixed value, or (adaptive trust) a Beta estimate updated from how often the
-AI agrees with each rule on the network being watched.
+AI agrees with each rule on the network being watched. Callers count a disagreement only when
+the AI flagged nothing from the alert's source, so a rule is not punished for catching what
+the AI cannot see.
 """
 
 from collections import defaultdict

@@ -231,6 +231,9 @@ cmd_live() {
   local models=(models/live/*.joblib)
   local snort=1
   command -v snort >/dev/null || { warn "Snort is not installed — running the ML only"; snort=0; }
+  # Snort as a counselor: detectors take Snort's advice when unsure (NIDS_SNORT_COUNSELOR=0: off)
+  local counsel=()
+  (( snort )) && [[ "${NIDS_SNORT_COUNSELOR:-1}" != 0 ]] && counsel=(--snort-counselor)
 
   on_signals
   "$NIDS" reset >/dev/null
@@ -241,7 +244,7 @@ cmd_live() {
   # live alerts are also kept in logs/journal/ — `nids journal-report` gives the false-alarm rate
   [[ "$target" == /* ]] || run_service journal "$NIDS" journal
   for model in "${models[@]}"; do
-    run_service "detect-$(basename "$model" .joblib)" "$NIDS" detect "$model" --sources live --cross-check --suppress-fallback
+    run_service "detect-$(basename "$model" .joblib)" "$NIDS" detect "$model" --sources live --cross-check --suppress-fallback "${counsel[@]}"
   done
   if (( snort )); then
     say "starting Snort on $target"

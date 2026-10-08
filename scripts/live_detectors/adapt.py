@@ -180,6 +180,7 @@ def run_config(name, base, stream_chunks, test, source_check, args):
     detectors = [copy.deepcopy(d) for d in base]
     trust = RuleTrust(prior=0.9, prior_weight=args.rule_prior)
     pools = {d.name: ([], []) for d in base}  # agreement labels each detector may learn from
+    ai_sources: set = set()  # sources the AI has flagged on its own
     curve, labels_log = [], []
     final = run_config.last = {}
 
@@ -219,10 +220,14 @@ def run_config(name, base, stream_chunks, test, source_check, args):
             for d in detectors:
                 d.adapt(X_new, y_new, args.cluster_prior, reselect=adaptive == "reselect")
         if adaptive:
-            snort_rules = chunk["snort_rules"].to_numpy()
+            # disagreements count only when the AI flagged nothing from that source so far:
+            # otherwise they more likely show an AI blind spot than a Snort false alarm
+            ai_sources.update(chunk.loc[own_attack, "src_ip"])
+            snort_rules, sources = chunk["snort_rules"].to_numpy(), chunk["src_ip"].to_numpy()
             for i in np.flatnonzero(chunk["snort_rules"].map(bool).to_numpy()):
+                disagree = int(sure_normal[i] and sources[i] not in ai_sources)
                 for rule in snort_rules[i]:
-                    trust.update(rule, agree=int(own_attack[i]), disagree=int(sure_normal[i]))
+                    trust.update(rule, agree=int(own_attack[i]), disagree=disagree)
 
         if learn and len(idx):
             for d in detectors:  # specialists learn the attacks they were involved in

@@ -24,7 +24,7 @@ class DetectorsView(APIView):
         r = get_redis()
         return Response({"detectors": monitor.read_stats(r), "breakdown": monitor.read_breakdown(r),
                          "activity": monitor.read_activity(r), "live": monitor.read_live(r),
-                         "health": monitor.read_health(r),
+                         "health": monitor.read_health(r), "snort_trust": monitor.read_snort_trust(r),
                          "replay": replay.manager.status()})
 
 
@@ -61,7 +61,8 @@ class IncidentsView(APIView):
 
 class ResultsView(APIView):
     def get(self, request):
-        return Response({"by_label": results.by_label()})
+        return Response({"by_label": results.by_label(), "system_tests": results.system_tests(),
+                         "cross_host": results.cross_host(), "adaptation": results.adaptation()})
 
 
 class SnortView(APIView):

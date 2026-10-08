@@ -18,6 +18,7 @@ import redis
 from ..counselor import CounselorNetwork
 from ..detector.detector import Detector
 from . import bus
+from .snort_counselor import RedisSnortCounselor, wait_for_snort
 
 
 class RemoteCounselor:
@@ -99,6 +100,7 @@ def record(r: redis.Redis, name: str, frame: pd.DataFrame, final: pd.DataFrame) 
     counters = {
         "samples": len(final), "flagged_attack": int(attack.sum()),
         "conflicts": int(final["conflict"].sum()),
+        "advice:snort": int((final["counselor"] == "snort").sum()) if "counselor" in final else 0,
         **{f"resolution:{k}": int(v) for k, v in resolution.items()},
     }
     src, dst = _endpoints(frame)
@@ -150,6 +152,7 @@ def run(
     exit_on_end: bool = False,
     max_history: int = 2_000_000,
     suppress_fallback: bool = False,
+    snort_counselor: bool = False,
 ) -> None:
     state = State()
     r.hset(bus.SUBSCRIPTIONS, detector.name, json.dumps(sources))
@@ -167,7 +170,8 @@ def run(
                         r.sadd(bus.ENDED, detector.name)
                         continue
                     frame = bus.decode_frame(bus.field(fields, "frame"))
-                    process(r, detector, frame, state, min_accuracy, window, cross_check, suppress_fallback)
+                    process(r, detector, frame, state, min_accuracy, window, cross_check, suppress_fallback,
+                            snort_counselor, learn=bool(retrain_every))
                     detector.trim_history(max_history)
                     pending = sum(len(y) for _, y in detector.new_signatures)
                     if retrain_every and pending >= retrain_every:
@@ -181,13 +185,24 @@ def run(
         state.stop.set()
 
 
-def process(r, detector, frame, state, min_accuracy, window, cross_check, suppress_fallback=False) -> pd.DataFrame:
+def process(r, detector, frame, state, min_accuracy, window, cross_check, suppress_fallback=False,
+            snort_counselor=False, learn=False) -> pd.DataFrame:
+    """Classify a batch and resolve its conflicts with the counselors. ``snort_counselor``:
+    Snort advises on conflicts and a trusted "attack" advice wins (counselor/network.py).
+    ``learn``: keep advised samples for retraining — only when the service retrains, or
+    they would pile up in memory forever."""
     results = detector.detect(frame, frame["timestamp"])
     state.watermark = max(state.watermark, float(frame["timestamp"].max()))
+    conflicts = results["conflict"].to_numpy(dtype=bool)
+    if snort_counselor and conflicts.any() and "flow_end" in frame:
+        # ask Snort only once it has seen these connections to the end
+        wait_for_snort(r, float(frame.loc[conflicts, "flow_end"].max()))
     counselors = [RemoteCounselor(r, name.decode())
                   for name in r.hkeys(bus.SUBSCRIPTIONS) if name.decode() != detector.name]
     network = CounselorNetwork([detector, *counselors], min_accuracy, window,
-                               cross_check_normal=cross_check, suppress_fallback=suppress_fallback)
+                               cross_check_normal=cross_check, suppress_fallback=suppress_fallback,
+                               advisors=[RedisSnortCounselor(r)] if snort_counselor else [],
+                               attack_advice_wins=snort_counselor, learn_from_advice=learn)
     final = network.resolve(detector, frame, results)
     record(r, detector.name, frame, final)
     # how far this detector has analysed, so the Snort correlator knows when to ask

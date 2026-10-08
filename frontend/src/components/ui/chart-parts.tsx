@@ -95,12 +95,15 @@ export function TooltipBox({ title, rows }: { title: string; rows: TooltipRow[] 
 export function DataTable({
   columns,
   rows,
+  scroll = true,
 }: {
   columns: { key: string; label: string; align?: "left" | "right" }[];
   rows: Record<string, React.ReactNode>[];
+  /** cap the height and scroll (long, live tables); false shows every row */
+  scroll?: boolean;
 }) {
   return (
-    <div className="max-h-80 overflow-auto rounded-lg border border-line">
+    <div className={`${scroll ? "max-h-80" : ""} overflow-auto rounded-lg border border-line`}>
       <table className="w-full text-xs">
         <thead className="sticky top-0 bg-raised text-muted">
           <tr>

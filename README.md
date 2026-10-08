@@ -158,9 +158,9 @@ Port scans and payload exploits are Snort's job.
 |---|---|
 | **Overview** | what is being watched and the health of every service; headline numbers with a plain-language verdict; top-risk attackers; AI vs Snort detections over time; false alarms on your network, with attack-test marking; latest alerts |
 | **Alerts** | every flagged connection once, with a severity and a plain explanation. An **Attackers** view groups alerts by source into ranked attack stories, with full-history search and a Print/PDF report |
-| **Detectors** | each AI detector's counters and how its decisions were made: on its own, from a counselor's advice, double-checked, or a best guess |
+| **Detectors** | each AI detector's counters and how its decisions were made: on its own, from a counselor's advice, double-checked, or a best guess; Snort as a counselor, with its live trust in every rule |
 | **Test with recordings** | replay a recorded capture through the AI and Snort, apart from live monitoring |
-| **Results** | the detectors' test results per attack type |
+| **Results** | the detectors' test results per attack type with 95% intervals, the whole-system test on a held-out recording, the unseen botnet machine, and the thesis experiments |
 
 - The dashboard is written for non-experts: "AI" and "rule checker" rather than "ML" and
   "Snort".
@@ -260,6 +260,31 @@ everywhere, guide the detectors there:
 ```bash
 python scripts/live_detectors/adapt.py --source 2018 --target 2017   # and --source 2017 --target 2018
 ```
+
+**In live mode too.** Whenever Snort runs, detectors start with `--snort-counselor`
+(`NIDS_SNORT_COUNSELOR=0` turns it off):
+
+- The bridge links each alert to its connection as soon as the connection is known.
+- A detector that is unsure waits until Snort has seen that connection to the end, then
+  takes its advice.
+- Rule trust adapts from Confirmed and Disputed verdicts and is kept in `logs/snort-trust.json`.
+
+A disagreement counts against a rule only if the AI flagged nothing from that source.
+Without this, the Challenge-ACK rule, which catches the Slowloris connections the AI
+misses, lost all its trust.
+
+On the held-out recording, the live services with Snort as a counselor caught 47% of
+Slowloris, against 35% without, with no false alarms. That's the community rules, live
+trust and full-speed replay; offline, with fixed trust, it reaches 69.5%. The number of
+doubts Snort settles varies between full-speed replays, because the services race each
+other; live traffic arrives in real time.
+
+The dashboard shows it all:
+
+- **Test results:** the thesis experiments (scores over time, every configuration with
+  95% intervals and McNemar against the deployed system, agreement-label accuracy, rule
+  trust), plus the whole-system recording test and the unseen botnet machine.
+- **AI detectors:** Snort's live trust per rule, and how many doubts it settled.
 
 Every rate comes with a 95% Wilson interval, and every comparison with McNemar's test.
 In a development run on one lab, Snort as a counselor raised detection from 98.23% to

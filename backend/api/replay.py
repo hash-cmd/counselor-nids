@@ -120,7 +120,8 @@ class ReplayManager:
             for model in detectors:
                 commands[model.stem] = self._command(
                     "detect", str(model), "--sources", "replay", "--min-accuracy", str(min_accuracy),
-                    "--exit-on-end", "--suppress-fallback", *(["--cross-check"] if cross_check else []))
+                    "--exit-on-end", "--suppress-fallback", *(["--cross-check"] if cross_check else []),
+                    *(["--snort-counselor"] if snort and os.environ.get("NIDS_SNORT_COUNSELOR", "1") != "0" else []))
             commands["extractor"] = self._command(
                 "extract", "--live", str(path), "--source", "replay", "--wait-for", str(len(detectors)))
             if snort:

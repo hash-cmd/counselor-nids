@@ -15,7 +15,7 @@ data/pcap/
 # with manifest.json and SHA256SUMS) so setup installs the validated set instead of retraining
 models/*
 !models/live/
-results/
+/results/
 
 # Snort 3 community rules (downloaded by ./start.sh setup)
 snort/rules/community/
@@ -34,7 +34,7 @@ backend/staticfiles/
 backend/.env
 
 # start.sh
-logs/
+/logs/
 
 # docker-compose secrets
 /.env

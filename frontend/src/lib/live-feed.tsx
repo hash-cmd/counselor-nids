@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useEffectEvent, useState } from "
 import { api, ApiError, WS_URL } from "./api";
 import type {
   Activity, Alert, LiveCapture, Breakdown, DetectorStats, ReplayStatus, ServiceHealth, SnortAlert, SnortSummary,
+  SnortTrustRow,
 } from "./types";
 
 const MAX_ALERTS = 500;
@@ -27,6 +28,8 @@ export type LiveState = {
   breakdown: Breakdown | null;
   /** heartbeats of the background services (capture, observer, detectors, Snort, journal) */
   health: ServiceHealth[];
+  /** how much the AI has come to trust each Snort rule as a counselor */
+  snortTrust: SnortTrustRow[];
   /** Detections per second: flows the ML flagged (any detector) and Snort alerts. */
   detectionRate: RatePoint[];
   /** Attacks flagged per second, per detector. */
@@ -46,6 +49,7 @@ const initial: LiveState = {
   snortAlerts: [],
   breakdown: null,
   health: [],
+  snortTrust: [],
   detectionRate: [],
   flaggedRate: [],
   sampleRate: [],
@@ -140,6 +144,7 @@ function useLiveFeed(onSessionEnd: () => void): LiveState {
             activity: message.activity ?? "idle",
             live: message.live ?? null,
             health: message.health ?? [],
+            snortTrust: message.snort_trust ?? [],
             replay: message.replay,
             flaggedRate: append(s.flaggedRate, points.flagged),
             sampleRate: append(s.sampleRate, points.samples),

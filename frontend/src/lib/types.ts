@@ -6,6 +6,8 @@ export type DetectorStats = {
   cross_checked: number;
   fallback: number;
   retrained_on: number;
+  /** conflicts settled by Snort's advice (Snort as a counselor) */
+  snort_advised: number;
 };
 
 export type ReplayStatus =
@@ -92,14 +94,45 @@ export type SnortAlert = {
 
 export type Metrics = { accuracy: number; detection_rate: number; false_alarm_rate: number };
 
+export type Interval = { low: number | null; high: number | null };
+
 export type ByLabelTable = {
   series: string[];
-  rows: { label: string; flows: number; flagged: Record<string, number | null> }[];
+  rows: { label: string; flows: number; flagged: Record<string, number | null>; interval?: Interval | null }[];
   summary: Record<string, Metrics>;
+};
+
+export type SystemTestRow = { traffic: string; flows: number; ai: number; snort: number; either: number };
+
+export type CrossHost = {
+  host: string; bot_flows: number; benign_flows: number;
+  detection_rate: number; false_alarm_rate: number; detection_interval: Interval; false_alarm_interval: Interval;
+};
+
+export type AdaptScore = {
+  detection_rate: number; detection_rate_low: number; detection_rate_high: number;
+  false_alarm_rate: number; false_alarm_rate_low: number; false_alarm_rate_high: number;
+  balanced: number | null; labels: Record<string, number | null>;
+};
+
+export type SnortTrustRow = { rule: string; msg: string; agree: number; disagree: number; trust: number };
+
+export type Adaptation = {
+  name: string; source: string; target: string; development: boolean; chunks: number;
+  curve: { config: string; step: number; detection_rate: number; false_alarm_rate: number; balanced: number | null }[];
+  final: Record<string, AdaptScore>;
+  baselines: Record<string, AdaptScore>;
+  mcnemar: { system_a: string; system_b: string; b: number; c: number; test: string; statistic: number; p_value: number }[];
+  agreement: { config: string; attack_labels: number; normal_labels: number; attack_precision: number | null;
+               normal_precision: number | null; attack_interval: Interval; normal_interval: Interval }[];
+  rule_trust: SnortTrustRow[];
 };
 
 export type Results = {
   by_label: Partial<Record<"live", ByLabelTable>>;
+  system_tests: Partial<Record<"project_rules" | "project_rules_snort_counselor" | "community_rules" | "community_rules_snort_counselor", SystemTestRow[]>>;
+  cross_host: CrossHost | null;
+  adaptation: Adaptation[];
 };
 
 export type AttackTest = { start: number; end: number | null; note: string };

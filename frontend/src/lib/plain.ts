@@ -4,8 +4,24 @@
 const DETECTORS: Record<string, { name: string; knows: string }> = {
   live_dos: { name: "Flood detector", knows: "flooding attacks that overload a server (DoS)" },
   live_access: { name: "Break-in detector", knows: "password guessing, and some website attacks (the rule checker is the main defence against those: it learned from too few examples)" },
+  snort: { name: "Rule checker (Snort)", knows: "known attack patterns inside the traffic; advises the AI detectors when they are unsure" },
   live_bot: { name: "Botnet detector", knows: "infected machines secretly checking in with an attacker's control server (botnet)" },
 };
+
+/** Thesis experiment configurations (scripts/live_detectors/adapt.py). */
+export const CONFIGS: Record<string, { name: string; ablation?: boolean }> = {
+  ai: { name: "Deployed system (AI detectors advising each other)" },
+  "+snort": { name: "+ Snort as a counselor" },
+  "+rules": { name: "+ Snort counselor, adaptive rule trust" },
+  "+learn": { name: "+ Snort counselor, learning from agreement" },
+  full: { name: "Proposed: Snort counselor + rule trust + learning" },
+  "+trust": { name: "Ablation: + adaptive detector trust", ablation: true },
+  "+trust-reselect": { name: "Ablation: + detectors re-select classifiers", ablation: true },
+  "full+trust": { name: "Ablation: proposed + adaptive detector trust", ablation: true },
+  "snort alone": { name: "Baseline: Snort alone" },
+  "ai or snort": { name: "Baseline: AI or Snort" },
+};
+export const configName = (key: string) => CONFIGS[key]?.name ?? key;
 
 export const detectorName = (name: string) => DETECTORS[name]?.name ?? name;
 export const detectorKnows = (name: string) => DETECTORS[name]?.knows ?? null;
@@ -133,7 +149,7 @@ export const explainActivity = (text: string) => ATTACK_INFO[attackCategory(text
 /** How a detector reached a verdict (the `resolution` field). */
 export const RESOLUTIONS: Record<string, { label: string; meaning: string }> = {
   unanimous: { label: "Sure on its own", meaning: "the detector's checks all agreed" },
-  advice: { label: "Asked a colleague", meaning: "its checks disagreed, so it took advice from another detector" },
+  advice: { label: "Asked a colleague", meaning: "its checks disagreed, so it took advice from another detector or the rule checker" },
   cross_check: { label: "Double-checked", meaning: "it thought the traffic was safe, but another detector recognised an attack" },
   fallback: { label: "Best guess", meaning: "its checks disagreed and no other detector could help" },
 };

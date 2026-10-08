@@ -11,7 +11,7 @@ WorkingDirectory=@ROOT@
 NoNewPrivileges=yes
 # model files are pickles (loading one runs code): refuse any that does not match its checksum
 ExecStartPre=/bin/sh -c 'cd models/live && sha256sum --quiet -c SHA256SUMS'
-ExecStart=@ROOT@/.venv/bin/nids detect models/live/%i.joblib --sources live --cross-check --suppress-fallback
+ExecStart=@ROOT@/.venv/bin/nids detect models/live/%i.joblib --sources live --cross-check --suppress-fallback --snort-counselor
 Restart=on-failure
 RestartSec=5
 

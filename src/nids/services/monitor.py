@@ -23,6 +23,7 @@ def read_stats(r: redis.Redis) -> dict[str, dict]:
             "cross_checked": raw.get("resolution:cross_check", 0),
             "fallback": raw.get("resolution:fallback", 0),
             "retrained_on": raw.get("retrained_on", 0),
+            "snort_advised": raw.get("advice:snort", 0),
         }
     return stats
 
@@ -65,6 +66,12 @@ def read_breakdown(r: redis.Redis, n: int = 8) -> dict:
 
 
 STALE = 15.0  # seconds without a heartbeat before a service counts as down
+
+
+def read_snort_trust(r: redis.Redis, limit: int = 20) -> list[dict]:
+    """How much each Snort rule is trusted as a counselor, from the AI's agreement."""
+    from .snort_counselor import trust_table
+    return trust_table(r, limit)
 
 
 def read_health(r: redis.Redis, now: float | None = None) -> list[dict]:

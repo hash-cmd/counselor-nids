@@ -52,7 +52,7 @@ def detect(args) -> None:
     detector_service.run(
         bus.connect(args.redis), detector, args.sources, args.min_accuracy, args.window,
         args.cross_check, args.retrain_every, args.advice_wait, args.exit_on_end,
-        suppress_fallback=args.suppress_fallback)
+        suppress_fallback=args.suppress_fallback, snort_counselor=args.snort_counselor)
 
 
 def monitor(args) -> None:
@@ -66,9 +66,11 @@ def snort(args) -> None:
     from .services import bus
     from .services import snort_bridge as bridge
 
+    # live: Snort rule trust persists across restarts (a recording's verdicts must not change it)
+    trust_file = args.trust_file if args.interface else None
     stats = bridge.run(bus.connect(args.redis), target=args.pcap or args.interface, follow=args.follow,
                        min_accuracy=args.min_accuracy, wait=args.wait,
-                       config=args.config, include_path=args.include_path)
+                       config=args.config, include_path=args.include_path, trust_file=trust_file)
     print("snort:", stats)
 
 
@@ -142,6 +144,8 @@ def main(argv=None) -> None:
     p.add_argument("--cross-check", action="store_true", help="cross-check normal verdicts")
     p.add_argument("--suppress-fallback", action="store_true",
                    help="treat unresolved-conflict guesses as normal (fewer false alarms on live traffic)")
+    p.add_argument("--snort-counselor", action="store_true",
+                   help="take Snort's advice on conflicts (trusted attack advice wins); needs `nids snort`")
     p.add_argument("--retrain-every", type=int, default=0, help="retrain after N learned signatures")
     p.add_argument("--advice-wait", type=float, default=2.0)
     p.add_argument("--exit-on-end", action="store_true")
@@ -161,6 +165,8 @@ def main(argv=None) -> None:
     p.add_argument("--wait", type=float, default=120.0, help="seconds an alert may wait for its flow")
     p.add_argument("--config", type=Path, default=PROJECT_ROOT / "snort" / "nids.lua")
     p.add_argument("--include-path", default="/etc/snort", help="where snort_defaults.lua lives")
+    p.add_argument("--trust-file", type=Path, default=PROJECT_ROOT / "logs" / "snort-trust.json",
+                   help="live: where Snort rule trust is kept between runs")
     p.set_defaults(func=snort)
 
     p = sub.add_parser("health", help="which services are alive; exit 1 if any is down, 2 if Redis is")

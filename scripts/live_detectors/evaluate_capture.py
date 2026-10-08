@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from build_dataset import SOURCES, flowmeter  # noqa: E402
 
 from nids.capture import snort_offline  # noqa: E402
-from nids.counselor import CounselorNetwork  # noqa: E402
+from nids.counselor import CounselorNetwork, SnortCounselor  # noqa: E402
 from nids.datasets.flow_features import CIC2018_TO_2017  # noqa: E402
 from nids.datasets.paths import PROJECT_ROOT, RESULTS_DIR  # noqa: E402
 from nids.services.live_capture import carries_payload  # noqa: E402
@@ -46,7 +46,9 @@ def label(flows: pd.DataFrame) -> pd.Series:
                      index=flows.index)
 
 
-def ml_flags(flows: pd.DataFrame, min_accuracy: float) -> np.ndarray:
+def ml_flags(flows: pd.DataFrame, min_accuracy: float, snort_rules: pd.Series | None = None) -> np.ndarray:
+    """The AI's verdicts, as live mode runs it; with ``snort_rules`` (the rules that fired on
+    each flow), Snort advises on conflicts as in live mode with --snort-counselor."""
     features = list(CIC2018_TO_2017.values())
     judged = carries_payload(flows) & flows[features].replace([np.inf, -np.inf], np.nan).notna().all(axis=1)
     flagged = np.zeros(len(flows), dtype=bool)
@@ -54,16 +56,21 @@ def ml_flags(flows: pd.DataFrame, min_accuracy: float) -> np.ndarray:
     if sample.empty:
         return flagged
     detectors = [joblib.load(p) for p in sorted(MODELS.glob("*.joblib"))]
-    finals = CounselorNetwork(detectors, min_accuracy, window=0, cross_check_normal=True,
-                              suppress_fallback=True).run(sample, sample["record_id"])
+    advisors = []
+    if snort_rules is not None:
+        advisors = [SnortCounselor(dict(zip(sample["record_id"].astype(float), snort_rules[sample["index"]].to_numpy())))]
+    finals = CounselorNetwork(detectors, min_accuracy, window=0, cross_check_normal=True, suppress_fallback=True,
+                              advisors=advisors, attack_advice_wins=bool(advisors)).run(sample, sample["record_id"])
     hit = np.logical_or.reduce([f["prediction"].to_numpy(dtype=bool) for f in finals.values()])
     flagged[sample.loc[hit, "index"].to_numpy()] = True
     return flagged
 
 
-def snort_flags(capture: Path, flows: pd.DataFrame, work: Path, community: bool = True) -> tuple[np.ndarray, list[dict]]:
+def snort_flags(capture: Path, flows: pd.DataFrame, work: Path, community: bool = True):
+    """(flagged by Snort, Snort alerts, rules that fired per flow)."""
     alerts = snort_offline.run_snort(capture, work / "snort", community)
-    return snort_offline.link(flows, alerts).map(bool).to_numpy(), alerts
+    rules = snort_offline.link(flows, alerts)
+    return rules.map(bool).to_numpy(), alerts, rules
 
 
 def main():
@@ -71,6 +78,7 @@ def main():
     parser.add_argument("capture", nargs="?", type=Path, default=PROJECT_ROOT / "data" / "pcap" / "real-attacks-2018.pcap")
     parser.add_argument("--min-accuracy", type=float, default=0.9)
     parser.add_argument("--no-community", action="store_true", help="Snort with the project's rules only")
+    parser.add_argument("--snort-counselor", action="store_true", help="Snort advises the AI on conflicts (as live)")
     args = parser.parse_args()
 
     with tempfile.TemporaryDirectory(prefix="nids-evaluate-") as work:
@@ -78,8 +86,8 @@ def main():
         flows = flowmeter(args.capture, work / "flows.csv").reset_index(drop=True)
         flows["record_id"] = np.arange(len(flows))
         flows["label"] = label(flows)
-        ml = ml_flags(flows, args.min_accuracy)
-        snort, alerts = snort_flags(args.capture, flows, work, community=not args.no_community)
+        snort, alerts, rules = snort_flags(args.capture, flows, work, community=not args.no_community)
+        ml = ml_flags(flows, args.min_accuracy, rules if args.snort_counselor else None)
 
     rows = {}
     for lbl, g in flows.groupby("label"):
@@ -94,7 +102,7 @@ def main():
 
     out = RESULTS_DIR / "live"
     out.mkdir(parents=True, exist_ok=True)
-    suffix = "_project_rules" if args.no_community else ""
+    suffix = ("_project_rules" if args.no_community else "") + ("_snort_counselor" if args.snort_counselor else "")
     path = out / f"system_{args.capture.stem.replace('-', '_')}{suffix}.csv"
     table.rename_axis("traffic").to_csv(path)
     print("written to", path)

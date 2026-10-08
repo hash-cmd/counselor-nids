@@ -13,6 +13,10 @@ agrees:
 Flows the ML flagged and Snort did not are the "ML only" detections; they are counted
 from the sets ``nids:flagged:ml`` (written by detector services) and ``nids:flagged:snort``.
 
+Snort is also a counselor (services/snort_counselor.py): each alert is linked to its flows as
+soon as they are indexed, so detectors started with --snort-counselor can take Snort's advice
+on conflicts; and every Confirmed / Disputed verdict updates that rule's trust.
+
 Snort alerts are about one flow (a web attack in one request) or about a host's
 behaviour (a port scan stands for many probe connections). Host-level alerts are
 linked to every flow between the two hosts within ``HOST_WINDOW`` seconds.
@@ -31,6 +35,7 @@ import numpy as np
 import redis
 
 from . import bus, flow_index
+from . import snort_counselor as counsel
 from .detector import RemoteCounselor
 
 ALERTS = f"{bus.PREFIX}:snort:alerts"
@@ -77,6 +82,7 @@ def follow_alerts(path: Path, done, poll: float = 0.5):
 class Pending:
     alert: dict
     seen: float = field(default_factory=time.monotonic)
+    early: bool = False  # already linked for the Snort counselor
 
 
 class Correlator:
@@ -87,7 +93,25 @@ class Correlator:
 
     def add(self, alert: dict) -> None:
         self.r.hincrby(STATS, "alerts", 1)
+        self.r.hset(counsel.RULE_NAMES, counsel.rule_key(alert), alert.get("msg", ""))
         self.pending.append(Pending(alert))
+
+    def link_early(self) -> None:
+        """Record each alert's rule on its flows as soon as they are indexed, for the Snort
+        counselor: detectors judge a flow seconds after it ends, before the full linking
+        below (which waits for their verdicts) runs."""
+        pipe = self.r.pipeline()
+        for item in self.pending:
+            if item.early:
+                continue
+            flows = self.flows_for(item.alert)
+            if flows:
+                for record_id in flows:
+                    key = f"{counsel.FLOW_RULES}{record_id}"
+                    pipe.sadd(key, counsel.rule_key(item.alert))
+                    pipe.expire(key, counsel.TTL)
+                item.early = True
+        pipe.execute()
 
     def flows_for(self, alert: dict) -> list[int]:
         at = float(alert["seconds"])
@@ -112,6 +136,7 @@ class Correlator:
         """Link what can be linked; give up on alerts older than ``wait`` (or all, if final).
         Flows are only indexed once they end, and classified a little later, so an alert
         waits until its flows exist and every detector has analysed them."""
+        self.link_early()
         analysed = self.analysed_up_to()
         ready, still = [], []
         for item in self.pending:
@@ -175,6 +200,12 @@ class Correlator:
         pipe = self.r.pipeline()
         pipe.sadd(FLAGGED_SNORT, *record_ids)
         pipe.expire(FLAGGED_SNORT, flow_index.TTL)
+        if verdict is not None:  # the AI agreed or disagreed with this rule: adapt its trust
+            # A disagreement counts against the rule only if the AI flagged nothing from this
+            # source: if it flags the source elsewhere, the dispute more likely shows a blind
+            # spot of the AI (e.g. slow DoS connections) than a Snort false alarm.
+            if verdict["attack"] or not self.r.hget(bus.ML_SOURCES, alert.get("src_addr", "")):
+                counsel.record_agreement(pipe, counsel.rule_key(alert), verdict["attack"])
         pipe.execute()
         self.publish(alert, record_ids, verdict)
 
@@ -220,10 +251,14 @@ def stream_ended(r: redis.Redis) -> bool:
 
 def run(r: redis.Redis, target: str | None = None, follow: Path | None = None,
         min_accuracy: float = 0.9, wait: float = 120.0, config: Path = DEFAULT_CONFIG,
-        include_path: str = "/etc/snort") -> dict:
+        include_path: str = "/etc/snort", trust_file: Path | None = None) -> dict:
     """Run Snort on ``target`` (pcap or interface), or follow an existing alert_json file,
-    and correlate until Snort and the flow stream have both finished."""
+    and correlate until Snort and the flow stream have both finished. With ``trust_file``
+    (live mode), Snort rule trust is loaded from it and saved to it every minute."""
     correlator = Correlator(r, min_accuracy, wait)
+    if trust_file is not None:
+        counsel.load_trust(r, trust_file)
+    saved = time.monotonic()
     r.set(ACTIVE, 1, ex=24 * 3600)
     process = None
     if follow is None:
@@ -237,20 +272,44 @@ def run(r: redis.Redis, target: str | None = None, follow: Path | None = None,
     def snort_done():
         return process is not None and process.poll() is not None
 
+    live = target is not None and not str(target).endswith((".pcap", ".pcapng"))
+    newest = [0.0]  # packet time of the latest alert
+
+    def publish_progress():
+        """How far Snort's alerts are linked, for detectors waiting on its advice: live,
+        Snort runs in real time (allow 2 s for it to write alerts); a recording is read
+        as fast as possible, so progress is the latest alert's packet time, then all."""
+        if snort_done():
+            progress = counsel.DONE
+        elif live:
+            progress = time.time() - 2.0
+        else:
+            progress = newest[0]
+        r.set(counsel.PROGRESS, progress, ex=3600)
+
     try:
         for alert in follow_alerts(follow, snort_done):
             if alert is None:  # heartbeat
                 bus.beat(r, "snort", running=process is None or process.poll() is None)
                 correlator.process()
+                publish_progress()
+                if trust_file is not None and time.monotonic() - saved > 60:
+                    counsel.save_trust(r, trust_file)
+                    saved = time.monotonic()
             else:
                 correlator.add(alert)
+                newest[0] = max(newest[0], float(alert.get("seconds", 0)))
         # Snort finished (pcap); keep linking while the flow extractor catches up.
+        correlator.process()
+        publish_progress()
         while correlator.pending and not stream_ended(r):
             correlator.process()
             time.sleep(1)
         correlator.process(final=True)
     finally:
         r.delete(ACTIVE)
+        if trust_file is not None:
+            counsel.save_trust(r, trust_file)
         if process is not None and process.poll() is None:
             process.terminate()
     return {bus.text(k): int(v) for k, v in r.hgetall(STATS).items()}
