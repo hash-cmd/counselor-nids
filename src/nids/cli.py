@@ -52,7 +52,7 @@ def detect(args) -> None:
     detector_service.run(
         bus.connect(args.redis), detector, args.sources, args.min_accuracy, args.window,
         args.cross_check, args.retrain_every, args.advice_wait, args.exit_on_end,
-        suppress_fallback=args.suppress_fallback, snort_counselor=args.snort_counselor)
+        suppress_fallback=args.suppress_fallback, snort_counselor=args.snort_counselor, model_path=args.model)
 
 
 def monitor(args) -> None:

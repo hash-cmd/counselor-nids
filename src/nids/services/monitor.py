@@ -200,8 +200,11 @@ def read_incidents(r: redis.Redis, source: str = "all", query: str = "", limit: 
         i["src"] = i["src"] or alert["src"] or None
         i["dst"] = i["dst"] or alert["dst"] or None
 
+    from .feedback import verdicts
+    marked = verdicts(r)
     for i in incidents.values():
         i["source"] = "both" if i["ml"] and i["snort"] else "snort" if i["snort"] else "ml"
+        i["feedback"] = marked.get(i["record_id"]) if i["record_id"] is not None else None
 
     everything = sorted(incidents.values(), key=lambda i: (-(i["time"] or 0), -(i["record_id"] or 0)))
     counts = {"all": len(everything), **{s: sum(i["source"] == s for i in everything) for s in SOURCES}}

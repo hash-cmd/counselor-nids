@@ -13,6 +13,7 @@ import { FalseAlarms } from "@/components/panels/false-alarms";
 import { OverlapChart } from "@/components/charts/overlap-chart";
 import { TopSources } from "@/components/panels/top-sources";
 import { buildIncidents } from "@/lib/incidents";
+import { useFeedback } from "@/lib/feedback";
 import { useLive } from "@/lib/live-feed";
 import { detectorName, ruleName } from "@/lib/plain";
 
@@ -48,7 +49,8 @@ function HowItWorks() {
 
 export default function OverviewPage() {
   const live = useLive();
-  const incidents = useMemo(() => buildIncidents(live.alerts, live.snortAlerts), [live.alerts, live.snortAlerts]);
+  const feedback = useFeedback();
+  const incidents = useMemo(() => buildIncidents(live.alerts, live.snortAlerts, feedback.verdicts), [live.alerts, live.snortAlerts, feedback.verdicts]);
   const breakdown = live.breakdown;
   // each flagged connection once, credited to the detector that recognised the attack
   // (a double-checked alarm belongs to the counselor, not to the detector that asked)

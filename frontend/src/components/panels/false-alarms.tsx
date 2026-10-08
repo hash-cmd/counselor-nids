@@ -212,6 +212,12 @@ export function FalseAlarms() {
             </div>
           </div>
 
+          {r.marked && (r.marked.real_attacks > 0 || r.marked.confirmed_false_alarms > 0) && (
+            <p className="text-xs text-muted">
+              Your verdicts: {count(r.marked.confirmed_false_alarms)} confirmed false alarms;{" "}
+              {count(r.marked.real_attacks)} marked real attacks, not counted as false alarms.
+            </p>
+          )}
           {(r.excluded_test_alerts.ml > 0 || r.excluded_test_alerts.snort > 0) && (
             <p className="text-xs text-muted">
               Not counted: {count(r.excluded_test_alerts.ml)} AI and {count(r.excluded_test_alerts.snort)} rule checker

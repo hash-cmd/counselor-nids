@@ -6,9 +6,9 @@ from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from nids.services import journal, monitor
+from nids.services import feedback, journal, monitor
 
-from . import replay, reputation, results
+from . import learning, replay, reputation, results
 from .redis_client import get_redis
 
 
@@ -121,7 +121,8 @@ class JournalView(APIView):
             return Response({"detail": "days must be a number"}, status=status.HTTP_400_BAD_REQUEST)
         folder = journal_dir()
         tests = journal.read_tests(folder)
-        report = journal.report(journal.read(folder, days), journal.windows(tests))
+        marked = {(e.get("run", ""), int(e["record_id"])): e["verdict"] for e in feedback.read(feedback_file())}
+        report = journal.report(journal.read(folder, days), journal.windows(tests), marked=marked)
         return Response({"days": days, "report": report, "tests": tests})
 
 
@@ -148,3 +149,42 @@ class JournalTestsView(APIView):
                 return Response({"detail": "delete needs an index"}, status=status.HTTP_400_BAD_REQUEST)
             tests = journal.delete_test(body.validated_data["index"], folder)
         return Response({"tests": tests})
+
+
+class FeedbackSerializer(serializers.Serializer):
+    record_id = serializers.IntegerField(min_value=0)
+    verdict = serializers.ChoiceField(feedback.VERDICTS)
+    note = serializers.CharField(required=False, allow_blank=True, max_length=200, default="")
+
+
+def feedback_file() -> Path:
+    return Path(os.environ.get("NIDS_FEEDBACK_FILE", settings.NIDS_ROOT / "logs" / "feedback.jsonl"))
+
+
+class FeedbackView(APIView):
+    """GET: this run's verdicts (record id -> verdict), all-time counts and the learning
+    status. POST {record_id, verdict: normal|attack, note}: mark a flagged connection."""
+
+    def get(self, request):
+        return Response({"verdicts": feedback.verdicts(get_redis()), "summary": feedback.summary(feedback_file()),
+                         "learning": learning.manager.status()})
+
+    def post(self, request):
+        body = FeedbackSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        entry = feedback.mark(get_redis(), body.validated_data["record_id"], body.validated_data["verdict"],
+                              body.validated_data["note"], feedback_file())
+        return Response(entry, status=status.HTTP_201_CREATED)
+
+
+class FeedbackLearnView(APIView):
+    """POST: retrain the detectors on the feedback (behind the safety gate); GET: status."""
+
+    def get(self, request):
+        return Response(learning.manager.status())
+
+    def post(self, request):
+        try:
+            return Response(learning.manager.start(), status=status.HTTP_202_ACCEPTED)
+        except RuntimeError as error:
+            return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)

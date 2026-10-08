@@ -17,6 +17,8 @@ export type Incident = {
   dst: string | null;
   label: string | null;
   source: IncidentSource;
+  /** the analyst's verdict on this connection, if any */
+  feedback?: "normal" | "attack" | null;
   /** origins: the detectors that raised the alarm themselves (a cross-checked alarm
    *  belongs to the counselor that recognised the attack, not to the detector that asked) */
   ml: { detectors: string[]; resolutions: string[]; counselors: string[]; origins: string[] } | null;
@@ -37,7 +39,8 @@ export const SOURCE_LABELS: Record<IncidentSource, string> = {
 
 /** Group the live feed's latest alerts by flow — for the overview's "latest" list.
  *  The Alerts page asks the server instead, which searches the full history. */
-export function buildIncidents(alerts: Alert[], snortAlerts: SnortAlert[]): Incident[] {
+export function buildIncidents(alerts: Alert[], snortAlerts: SnortAlert[],
+                               verdicts: Record<number, "normal" | "attack"> = {}): Incident[] {
   const byFlow = new Map<string, Incident>();
   const get = (key: string, recordId: number | null) => {
     let incident = byFlow.get(key);
@@ -77,6 +80,7 @@ export function buildIncidents(alerts: Alert[], snortAlerts: SnortAlert[]): Inci
 
   for (const incident of byFlow.values()) {
     incident.source = incident.ml && incident.snort ? "both" : incident.snort ? "snort" : "ml";
+    incident.feedback = incident.record_id != null ? verdicts[incident.record_id] ?? null : null;
   }
   return [...byFlow.values()].sort((a, b) => (b.time ?? 0) - (a.time ?? 0) || (b.record_id ?? 0) - (a.record_id ?? 0));
 }

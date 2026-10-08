@@ -79,6 +79,8 @@ Every service sends a heartbeat to Redis every second or so.
 | Services under `./start.sh` | `logs/<service>.log` | over 20 MB at start, moved to `.log.1` (one old copy kept) |
 | Alert journal (false alarms) | `logs/journal/<day>.jsonl` | 365 days (`nids journal --keep-days N`) |
 | Snort rule trust (Snort as a counselor) | `logs/snort-trust.json` | until deleted; delete it to start trust afresh |
+| Your verdicts on alarms | `logs/feedback.jsonl` | until deleted; the detectors learn from them |
+| Last "Teach the AI" run | `logs/feedback-learning.json`, `.log` | replaced by the next run |
 
 ## Serving the dashboard to other machines
 

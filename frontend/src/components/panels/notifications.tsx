@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { clock } from "@/lib/format";
 import { buildIncidents } from "@/lib/incidents";
 import { ATTACK_INFO } from "@/lib/plain";
+import { useFeedback } from "@/lib/feedback";
 import { useLive } from "@/lib/live-feed";
 import { categoryOf, ipOf, severityScore, type Tier, tierOf, TIER_META } from "@/lib/severity";
 
@@ -55,14 +56,15 @@ function IconBell({ active }: { active: boolean }) {
 
 export function NotificationBell() {
   const live = useLive();
+  const feedback = useFeedback();
   const [settings, setSettings] = useState<Settings>(() => (typeof window === "undefined" ? DEFAULTS : load()));
   const [open, setOpen] = useState(false);
   const notified = useRef<Set<string> | null>(null); // null until primed
   const runRef = useRef<string>("");
 
   const incidents = useMemo(
-    () => buildIncidents(live.alerts, live.snortAlerts),
-    [live.alerts, live.snortAlerts],
+    () => buildIncidents(live.alerts, live.snortAlerts, feedback.verdicts),
+    [live.alerts, live.snortAlerts, feedback.verdicts],
   );
   const alerts = useMemo(
     () => incidents

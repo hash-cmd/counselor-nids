@@ -131,6 +131,35 @@ flows, with false alarms on **2 of 5,192** normal flows (0.04%).
 botnet detector knows one botnet family (Ares). They don't cover DDoS or infiltration yet.
 Port scans and payload exploits are Snort's job.
 
+## Teaching the AI from your verdicts
+
+On a real network, lab-trained detectors misjudge some ordinary traffic. On a home network,
+the Flood detector flagged long-lived HTTPS and push connections (ports 443, 5228), whose tiny
+keep-alive packets look like slow DoS. Snort's agreement can't fix what Snort can't see, so
+the person watching closes the loop:
+
+1. **Mark an alarm.** Open it on the Alerts page and choose **Not an attack** or **Real
+   attack**. The verdict is saved with the connection's measurements in `logs/feedback.jsonl`
+   (detectors keep the measurements of flagged connections for 7 days). It takes the alarm out
+   of the counts at once, and counts for or against any Snort rule that fired on it. Marking
+   "not an attack" on something both Snort and the AI flagged asks for confirmation.
+2. **Teach the AI** (AI detectors page, or `python scripts/live_detectors/learn_feedback.py`).
+   Every detector retrains on the verdicts, each marked connection repeated 20 times. A
+   retrained detector is installed only if it gets the marked connections more right and has
+   forgotten nothing, checked on the lab data stored inside the model:
+   - overall detection and false alarms;
+   - every cluster that holds lab attacks;
+   - every attack type, when the training flows are present.
+3. **Running detectors switch** to an installed model within a minute, but only once it
+   matches its `SHA256SUMS` line. A changed file without a matching checksum is never loaded.
+
+Tested on the 2018 lab: the normal connections the Flood detector wrongly flagged (4 of
+25,941) were all fixed (4 → 0), lab detection went from 99.99% to 99.98%, and lab false alarms
+fell to 0. The check caught a retrain that would have cost the Break-in detector website
+attacks (94.2% → 90.9%) and kept the old model. A wrong verdict on 40 real DoS-Hulk
+connections taught the Flood detector to ignore those 40 (and near-identical ones), but not
+Hulk in general: its detection of other Hulk connections didn't fall.
+
 ## Snort configuration
 
 `snort/nids.lua` loads the project's 42 rules (`snort/rules/nids.rules`). It also loads the
@@ -179,6 +208,7 @@ Port scans and payload exploits are Snort's job.
 | `GET /api/alerts/`, `GET /api/incidents/` | AI alerts; flagged connections with AI and Snort verdicts |
 | `GET /api/snort/` | Snort alerts and how they compare with the AI |
 | `GET /api/journal/`, `POST /api/journal/tests/` | false alarms over days; mark attack tests |
+| `GET`/`POST /api/feedback/`, `/api/feedback/learn/` | your verdicts on alarms; teach the AI from them |
 | `GET /api/results/` | detector test results |
 | `GET /api/reputation/?ips=` | which IPs are on the local blocklists |
 | `GET /api/replay/`, `POST /api/replay/start/`, `/stop/` | test replays of recordings |

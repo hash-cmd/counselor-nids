@@ -5,11 +5,15 @@ detectors for advice over Redis. A background thread answers their advice reques
 from this detector's own decisions.
 """
 
+import hashlib
 import json
 import threading
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
+
+import joblib
 
 import numpy as np
 import pandas as pd
@@ -18,6 +22,7 @@ import redis
 from ..counselor import CounselorNetwork
 from ..detector.detector import Detector
 from . import bus
+from . import feedback
 from .snort_counselor import RedisSnortCounselor, wait_for_snort
 
 
@@ -55,16 +60,39 @@ class RemoteCounselor:
 
 @dataclass
 class State:
+    detector: Detector | None = None  # the current model (replaced when a retrained one is installed)
     watermark: float = -np.inf  # latest timestamp this detector has analysed
     ended: bool = False
     stop: threading.Event = field(default_factory=threading.Event)
 
 
-def serve_advice(r: redis.Redis, detector: Detector, state: State, wait: float) -> None:
+RELOAD_EVERY = 30.0  # seconds between checks for an installed, retrained model
+
+
+def installed_model(path: Path, seen: float) -> tuple[Detector | None, float]:
+    """A newer model file at ``path`` if one was installed since ``seen`` (its mtime) and it
+    matches its SHA256SUMS line — model files are pickles, so a file that does not match is
+    never loaded. Returns (detector or None, the mtime it was checked at)."""
+    try:
+        mtime = path.stat().st_mtime
+        if mtime == seen:
+            return None, seen
+        sums = (path.parent / "SHA256SUMS").read_text().split()
+        expected = dict(zip(sums[1::2], sums[0::2])).get(path.name)
+        if expected != hashlib.sha256(path.read_bytes()).hexdigest():
+            return None, seen  # being written, or not promoted: check again later
+        detector = joblib.load(path)
+        detector.clear_history()
+        return detector, mtime
+    except (OSError, ValueError, EOFError):
+        return None, seen
+
+
+def serve_advice(r: redis.Redis, name: str, state: State, wait: float) -> None:
     """Answer advice requests. Waits (up to ``wait`` s) until this detector has analysed
     the requested timestamps, since detectors run concurrently."""
     while not state.stop.is_set():
-        request = r.blpop(bus.advice_requests(detector.name), timeout=1)
+        request = r.blpop(bus.advice_requests(name), timeout=1)
         if request is None:
             continue
         request = json.loads(request[1])
@@ -73,7 +101,7 @@ def serve_advice(r: redis.Redis, detector: Detector, state: State, wait: float) 
         while (state.watermark < timestamps.max() and not state.ended
                and time.monotonic() < deadline):
             time.sleep(0.02)
-        found, prediction, confidence = detector.advise_many(timestamps, request["window"])
+        found, prediction, confidence = state.detector.advise_many(timestamps, request["window"])
         r.rpush(request["reply_to"], json.dumps({
             "found": found.tolist(), "prediction": prediction.tolist(),
             "confidence": confidence.tolist()}))
@@ -106,6 +134,10 @@ def record(r: redis.Redis, name: str, frame: pd.DataFrame, final: pd.DataFrame) 
     src, dst = _endpoints(frame)
     flagged_rows = final.index[attack]
     flagged_ids = frame.loc[flagged_rows, "record_id"].astype(int).tolist()
+    if len(flagged_rows):  # so an analyst's verdict on these alarms can be learned from later
+        keep = r.pipeline()
+        feedback.remember_flows(keep, frame, flagged_rows)
+        keep.execute()
 
     # Flows flagged by any detector, counted once: breakdowns grow only for flows
     # no other detector has flagged yet.
@@ -153,14 +185,26 @@ def run(
     max_history: int = 2_000_000,
     suppress_fallback: bool = False,
     snort_counselor: bool = False,
+    model_path: Path | None = None,
 ) -> None:
-    state = State()
+    """``model_path``: watch this file and switch to a retrained model once one is
+    installed there (learn_feedback.py), without a restart."""
+    state = State(detector=detector)
     r.hset(bus.SUBSCRIPTIONS, detector.name, json.dumps(sources))
-    threading.Thread(target=serve_advice, args=(r, detector, state, advice_wait), daemon=True).start()
+    threading.Thread(target=serve_advice, args=(r, detector.name, state, advice_wait), daemon=True).start()
+    seen = model_path.stat().st_mtime if model_path else 0.0
+    next_check = time.monotonic() + RELOAD_EVERY
 
     last = "0"
     try:
         while True:
+            if model_path and time.monotonic() >= next_check:
+                newer, seen = installed_model(model_path, seen)
+                if newer is not None and newer.name == detector.name:
+                    detector = state.detector = newer
+                    r.hincrby(bus.stats(detector.name), "reloaded", 1)
+                    print(f"{detector.name}: switched to the newly installed model", flush=True)
+                next_check = time.monotonic() + RELOAD_EVERY
             bus.beat(r, f"detector:{detector.name}", snort_counselor=snort_counselor)
             for _, messages in r.xread({bus.inbox(detector.name): last}, block=1000, count=10) or []:
                 for message_id, fields in messages:

@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { clock, count } from "@/lib/format";
+import { useFeedback, type Verdict } from "@/lib/feedback";
 import { type Incident, type IncidentSource, SOURCE_LABELS } from "@/lib/incidents";
 import { ATTACK_INFO, attackCategory, attackName, detectorClue, detectorName, resolutionLabel, RESOLUTIONS, ruleName } from "@/lib/plain";
 
@@ -109,6 +110,50 @@ function trust(incident: Incident): string {
   return "Flagged by the rule checker: the traffic matched a known attack pattern. The AI had no strong opinion either way.";
 }
 
+const VERDICT_BADGE = {
+  normal: { tone: "neutral", label: "Not an attack" },
+  attack: { tone: "critical", label: "Real attack" },
+} as const;
+
+/** "Not an attack" / "Real attack": the analyst's verdict, which the detectors learn from. */
+function VerdictButtons({ incident }: { incident: Incident }) {
+  const { mark, error } = useFeedback();
+  const [busy, setBusy] = useState(false);
+  if (incident.record_id == null) {
+    return <p className="text-xs text-muted">This alarm isn&apos;t tied to one connection, so it can&apos;t be marked.</p>;
+  }
+  const choose = async (verdict: "normal" | "attack") => {
+    // both methods agreed it is an attack: a wrong "not an attack" would teach the AI to
+    // ignore a real one, so ask before taking it
+    if (verdict === "normal" && incident.source === "both" &&
+        !window.confirm("Both the AI and the rule checker flagged this connection. Mark it as not an attack anyway? The AI will learn to ignore connections like it.")) {
+      return;
+    }
+    setBusy(true);
+    await mark(incident.record_id!, verdict);
+    setBusy(false);
+  };
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-ink-2">
+        Was it really an attack? Your answer takes it out of (or confirms it in) the counts, and the AI detectors learn
+        from it when you choose <span className="font-semibold">Teach the AI</span> on the AI detectors page.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        {(["normal", "attack"] as const).map((v) => (
+          <button key={v} type="button" disabled={busy} onClick={() => choose(v)} aria-pressed={incident.feedback === v}
+                  className={`rounded-md border px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
+                    incident.feedback === v ? "border-accent bg-wash text-ink" : "border-line text-ink-2 hover:bg-wash hover:text-ink"}`}>
+            {v === "normal" ? "Not an attack" : "Real attack"}
+          </button>
+        ))}
+        {incident.feedback && <StatusBadge tone={VERDICT_BADGE[incident.feedback].tone} label={`You said: ${VERDICT_BADGE[incident.feedback].label}`} />}
+      </div>
+      {error && <p className="text-xs text-critical">{error}</p>}
+    </div>
+  );
+}
+
 export function IncidentDetail({ incident, onClose }: { incident: Incident; onClose: () => void }) {
   const sev = severityScore(incident);
   const rows: [string, React.ReactNode][] = [
@@ -146,6 +191,9 @@ export function IncidentDetail({ incident, onClose }: { incident: Incident; onCl
           Close
         </button>
       </header>
+      <div className="mb-4">
+        <VerdictButtons incident={incident} />
+      </div>
       <div className="mb-4 space-y-3 rounded-md bg-wash p-3 text-xs text-ink-2">
         <p>
           <span className="font-semibold text-ink">What this is: </span>
@@ -235,7 +283,13 @@ export function IncidentsTable({
   subtitle?: string;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
-  const detail = incidents.find((i) => i.key === selected);
+  const { verdicts } = useFeedback();
+  // the newest verdicts (this page's own clicks included) over what the server sent
+  const rows = incidents.map((i): Incident => {
+    const mine: Verdict | undefined = i.record_id != null ? verdicts[i.record_id] : undefined;
+    return { ...i, feedback: mine ?? i.feedback ?? null };
+  });
+  const detail = rows.find((i) => i.key === selected);
 
   return (
     <div className={detail ? "grid gap-4 xl:grid-cols-[1fr_24rem]" : ""}>
@@ -253,10 +307,11 @@ export function IncidentsTable({
                   <th className="px-3 py-2 font-medium">What it looks like</th>
                   <th className="px-3 py-2 font-medium">From → to</th>
                   <th className="px-3 py-2 font-medium">AI&apos;s opinion</th>
+                  <th className="px-3 py-2 font-medium">Your verdict</th>
                 </tr>
               </thead>
               <tbody>
-                {incidents.map((i) => (
+                {rows.map((i) => (
                   <tr
                     key={i.key}
                     onClick={() => setSelected(i.key === selected ? null : i.key)}
@@ -278,6 +333,9 @@ export function IncidentsTable({
                       ) : i.snort?.ml_verdict === "normal" ? (
                         <StatusBadge tone="warning" label="Thinks it's normal" />
                       ) : "—"}
+                    </td>
+                    <td className="px-3 py-1.5 text-ink-2">
+                      {i.feedback ? <StatusBadge tone={VERDICT_BADGE[i.feedback].tone} label={VERDICT_BADGE[i.feedback].label} /> : "—"}
                     </td>
                   </tr>
                 ))}

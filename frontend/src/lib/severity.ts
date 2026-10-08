@@ -29,10 +29,13 @@ export function categoryOf(incident: Incident): Category {
 /** 0–100 severity for one incident: how dangerous, how corroborated, how broad. */
 export function severityScore(incident: Incident): number {
   if (incident.label && incident.label.toLowerCase() === "benign") return 0; // known false alarm
+  if (incident.feedback === "normal") return 0; // the analyst said it is not an attack
   let score = CATEGORY_WEIGHT[categoryOf(incident)];
 
-  // Corroboration: two independent methods agreeing is the strongest signal.
-  if (incident.source === "both") score += 18;
+  // Corroboration: two independent methods agreeing is the strongest signal; an analyst
+  // confirming it is stronger still.
+  if (incident.feedback === "attack") score += 25;
+  else if (incident.source === "both") score += 18;
   // The rule checker fired but the AI judged it normal — more likely a false alarm.
   else if (incident.source === "snort" && incident.snort?.ml_verdict === "normal") score -= 14;
   // Only the AI saw it: one method, uncorroborated.

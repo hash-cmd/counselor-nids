@@ -166,9 +166,12 @@ def _day(t: float) -> str:
     return datetime.fromtimestamp(t).strftime("%Y-%m-%d")
 
 
-def report(entries: list[dict], exclude=(), top: int = 10) -> dict:
+def report(entries: list[dict], exclude=(), top: int = 10, marked: dict | None = None) -> dict:
     """False-alarm figures from journal entries; ``exclude`` lists (start, end) epoch
-    windows when attacks were run on purpose."""
+    windows when attacks were run on purpose; ``marked`` maps (run, record id) to an
+    analyst's verdict: alarms marked "attack" are not false alarms, those marked "normal"
+    are confirmed ones."""
+    marked = marked or {}
     ticks = sorted((e for e in entries if e["kind"] == "tick"), key=lambda e: float(e["time"]))
     # Flows analysed: the counters restart with every run, so add up each run's growth,
     # leaving out growth during excluded windows.
@@ -198,6 +201,8 @@ def report(entries: list[dict], exclude=(), top: int = 10) -> dict:
 
     ml, ml_tests = split("ml")
     snort, snort_tests = split("snort")
+    real = [e for e in ml if marked.get((e.get("run", ""), int(e["record_id"]))) == "attack"]
+    ml = [e for e in ml if marked.get((e.get("run", ""), int(e["record_id"]))) != "attack"]
     flagged = {(e.get("run", ""), e["record_id"]): float(e["time"]) for e in ml}
     for t in flagged.values():
         on(_day(t))["ml_flagged"] += 1
@@ -221,5 +226,7 @@ def report(entries: list[dict], exclude=(), top: int = 10) -> dict:
             "top_rules": dict(Counter(e.get("msg", "") for e in snort).most_common(top)),
         },
         "excluded_test_alerts": {"ml": len(ml_tests), "snort": len(snort_tests)},
+        "marked": {"real_attacks": len({(e.get("run", ""), e["record_id"]) for e in real}),
+                   "confirmed_false_alarms": sum(v == "normal" for v in marked.values())},
         "daily": [{"day": day, **v, "hours": round(v["hours"], 2)} for day, v in sorted(daily.items())],
     }

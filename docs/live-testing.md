@@ -38,7 +38,10 @@ Your normal traffic should produce few incidents. On the **Alerts** page:
   community rules in `snort/rules/community/`). Policy rules such as "Terminal server
   request attempt" fire on ordinary RDP use; run with `NIDS_SNORT_COMMUNITY=0` to compare
   against the project's rules alone.
-- Click an incident for its source, destination and which detector raised it.
+- Click an incident for its source, destination and which detector raised it, and mark it
+  **Not an attack** or **Real attack**. Your verdict takes it out of the counts. When you have
+  marked a few, choose **Teach the AI** on the AI detectors page: the detectors learn from them
+  behind a safety check, and running detectors switch to the improved model by themselves.
 - On **AI detectors**, the *rule checker as a counselor* panel shows how many of the
   detectors' doubts Snort settled, and how much the AI has come to trust each Snort rule.
   Rules that fire on your ordinary traffic (often Windows policy rules) should drift below

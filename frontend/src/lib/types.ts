@@ -149,6 +149,8 @@ export type JournalReport = {
   };
   snort: { alerts: number; by_agreement: Record<string, number>; top_rules: Record<string, number> };
   excluded_test_alerts: { ml: number; snort: number };
+  /** your verdicts: alarms you marked real attacks are not counted as false alarms */
+  marked?: { real_attacks: number; confirmed_false_alarms: number };
   daily: { day: string; flows: number; hours: number; ml_flagged: number; snort: number }[];
 };
 

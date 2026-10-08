@@ -7,6 +7,7 @@ import { useState } from "react";
 import { NotificationBell } from "@/components/panels/notifications";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useAuth, useRequireAuth } from "@/lib/auth";
+import { FeedbackProvider } from "@/lib/feedback";
 import { LiveProvider, useLive } from "@/lib/live-feed";
 
 type NavItem = { href: string; label: string; hint: string; icon: React.ReactNode };
@@ -158,6 +159,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <LiveProvider onSessionEnd={logout}>
+      <FeedbackProvider>
       <div className="flex min-h-screen">
         {/* Sidebar — fixed column on desktop, width animates on collapse */}
         <aside
@@ -202,6 +204,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <main className="w-full flex-1 space-y-4 px-4 py-6 lg:px-6">{children}</main>
         </div>
       </div>
+      </FeedbackProvider>
     </LiveProvider>
   );
 }
