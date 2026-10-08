@@ -2,9 +2,6 @@
  *  without knowing the research behind it. Unknown names fall back to the original. */
 
 const DETECTORS: Record<string, { name: string; knows: string }> = {
-  detector1: { name: "Detector 1", knows: "flooding attacks that overload a server (DoS)" },
-  detector2: { name: "Detector 2", knows: "large-scale flooding (DDoS) and port scans" },
-  detector3: { name: "Detector 3", knows: "password guessing, infected machines and website attacks" },
   live_dos: { name: "Flood detector", knows: "flooding attacks that overload a server (DoS)" },
   live_access: { name: "Break-in detector", knows: "password guessing, and some website attacks (the rule checker is the main defence against those: it learned from too few examples)" },
   live_bot: { name: "Botnet detector", knows: "infected machines secretly checking in with an attacker's control server (botnet)" },
@@ -143,15 +140,3 @@ export const RESOLUTIONS: Record<string, { label: string; meaning: string }> = {
 
 export const resolutionLabel = (key: string) => RESOLUTIONS[key]?.label ?? key;
 
-/** Rows of the experiment comparisons (backend's FIGURE_ROWS keys). */
-export const APPROACHES: Record<string, string> = {
-  proposed_cross_check: "This system (detectors double-check each other)",
-  proposed: "The research paper's method",
-  any_detector_attack: "Alarm if any detector says attack",
-  best_local: "Each detector's single best check",
-  majority_voting: "Majority vote of all checks",
-  weighted_voting: "Weighted vote of all checks",
-  single_classifier_mean: "One AI method alone (average)",
-  single_classifier_max: "One AI method alone (best case)",
-  single_classifier_min: "One AI method alone (worst case)",
-};

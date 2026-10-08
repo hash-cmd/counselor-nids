@@ -101,10 +101,6 @@ def record(r: redis.Redis, name: str, frame: pd.DataFrame, final: pd.DataFrame) 
         "conflicts": int(final["conflict"].sum()),
         **{f"resolution:{k}": int(v) for k, v in resolution.items()},
     }
-    if "is_attack" in frame:
-        truth = frame["is_attack"].to_numpy(dtype=bool)
-        counters |= {"correct": int((attack == truth).sum()), "true_attacks": int(truth.sum()),
-                     "detected_attacks": int((attack & truth).sum())}
     src, dst = _endpoints(frame)
     flagged_rows = final.index[attack]
     flagged_ids = frame.loc[flagged_rows, "record_id"].astype(int).tolist()
@@ -124,8 +120,6 @@ def record(r: redis.Redis, name: str, frame: pd.DataFrame, final: pd.DataFrame) 
         pipe.hincrby(bus.stats(name), key, value)
     pipe.expire(bus.FLAGGED_ML, 3600)
     for row in new:
-        if "label" in frame:
-            pipe.hincrby(bus.ML_LABELS, str(frame.at[row, "label"]), 1)
         if src is not None:
             pipe.hincrby(bus.ML_SOURCES, frame.at[row, "src_ip"], 1)
 
@@ -136,8 +130,6 @@ def record(r: redis.Redis, name: str, frame: pd.DataFrame, final: pd.DataFrame) 
             "detector": name, "record_id": int(frame.at[row, "record_id"]), "timestamp": float(result.timestamp),
             "time": now, "resolution": str(result.resolution), "counselor": result.counselor or "",
         }
-        if "label" in frame:
-            entry["label"] = str(frame.at[row, "label"])
         if src is not None:
             entry["src"] = src.at[row]
         if dst is not None:

@@ -32,7 +32,6 @@ HEALTH = f"{PREFIX}:health"
 
 # Running counts behind the dashboard's breakdowns (hashes: name -> count).
 FLAGGED_ML = f"{PREFIX}:flagged:ml"                   # set of flows any detector flagged
-ML_LABELS = f"{PREFIX}:breakdown:ml:labels"           # flagged flows by true label (replays)
 ML_SOURCES = f"{PREFIX}:breakdown:ml:sources"         # flagged flows by source IP (captures)
 SNORT_RULES = f"{PREFIX}:breakdown:snort:rules"       # Snort alerts by rule
 SNORT_SOURCES = f"{PREFIX}:breakdown:snort:sources"   # Snort alerts by source IP

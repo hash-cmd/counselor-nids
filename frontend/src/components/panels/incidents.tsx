@@ -104,20 +104,6 @@ function trust(incident: Incident): string {
   return "Flagged by the rule checker: the traffic matched a known attack pattern. The AI had no strong opinion either way.";
 }
 
-/** The confirmed, externally-verified identity — only exists for the labelled practice data. */
-function truth(incident: Incident) {
-  if (incident.label == null) return null;
-  return incident.label.toLowerCase() === "benign"
-    ? <span className="text-critical">Normal traffic: a false alarm</span>
-    : attackName(incident.label);
-}
-
-function truthRow(incident: Incident): React.ReactNode {
-  const t = truth(incident);
-  if (t) return <>{t} <span className="text-muted">— confirmed answer (practice data)</span></>;
-  return <span className="text-muted">Live traffic, so no one has confirmed it. See the explanation above for what it looks like and how much to trust it.</span>;
-}
-
 export function IncidentDetail({ incident, onClose }: { incident: Incident; onClose: () => void }) {
   const sev = severityScore(incident);
   const rows: [string, React.ReactNode][] = [
@@ -126,7 +112,6 @@ export function IncidentDetail({ incident, onClose }: { incident: Incident; onCl
     ["Time", incident.time ? clock(incident.time) : "—"],
     ["From", incident.src ?? "—"],
     ["To", incident.dst ?? "—"],
-    ["What it really was", truthRow(incident)],
   ];
   if (incident.ml) {
     rows.push(["AI detectors", incident.ml.detectors.map(detectorName).join(", ")]);
@@ -263,9 +248,6 @@ export function IncidentsTable({
                   <th className="px-3 py-2 font-medium">What it looks like</th>
                   <th className="px-3 py-2 font-medium">From → to</th>
                   <th className="px-3 py-2 font-medium">AI&apos;s opinion</th>
-                  <th className="px-3 py-2 font-medium" title="Only the practice data comes with the right answers">
-                    What it really was
-                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -292,7 +274,6 @@ export function IncidentsTable({
                         <StatusBadge tone="warning" label="Thinks it's normal" />
                       ) : "—"}
                     </td>
-                    <td className="px-3 py-1.5 text-ink-2">{truth(i) ?? <span className="text-muted">not known</span>}</td>
                   </tr>
                 ))}
               </tbody>

@@ -45,10 +45,10 @@ logs are in `logs/` — send those and the numbers if anything looks wrong.
 
 ## 5. Check detection without attacking anything
 
-Replay the recorded attack capture from the dashboard: Overview → **Packet capture + Snort**
-→ `demo-attacks.pcap` → **Start replay**. It contains a scan, web attacks, a SYN flood and
-an SSH brute force against addresses that do not exist on your network, so nothing is sent
-anywhere — Snort and the detectors just read the file.
+Replay a recording of real attacks from the dashboard: **Test with recordings** →
+`real-attacks-2018.pcap` → **Start test**. It holds floods, password guessing, website
+attacks and botnet traffic recorded in a test lab, so nothing is sent anywhere — Snort and the
+detectors just read the file. (Build it once with `scripts/live_detectors/make_demo_capture.py`.)
 
 Only test attack tools against machines you own and are allowed to test.
 

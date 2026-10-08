@@ -14,7 +14,7 @@ import { OverlapChart } from "@/components/charts/overlap-chart";
 import { TopSources } from "@/components/panels/top-sources";
 import { buildIncidents } from "@/lib/incidents";
 import { useLive } from "@/lib/live-feed";
-import { attackName, ruleName } from "@/lib/plain";
+import { detectorName, ruleName } from "@/lib/plain";
 
 /** What the dashboard is, for someone seeing it for the first time. */
 function HowItWorks() {
@@ -50,6 +50,11 @@ export default function OverviewPage() {
   const live = useLive();
   const incidents = useMemo(() => buildIncidents(live.alerts, live.snortAlerts), [live.alerts, live.snortAlerts]);
   const breakdown = live.breakdown;
+  const byDetector = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const a of live.alerts) counts[a.detector] = (counts[a.detector] ?? 0) + 1;
+    return counts;
+  }, [live.alerts]);
 
   return (
     <>
@@ -67,13 +72,13 @@ export default function OverviewPage() {
       {/* Breakdowns side by side. */}
       <div className="grid gap-4 lg:grid-cols-2">
         <BreakdownChart
-          title="Kinds of attack the AI caught"
-          tag="Fig.5 · By type"
-          subtitle="Flagged connections, by the attack they really were"
-          counts={breakdown?.ml_labels ?? {}}
+          title="AI: which detector raised the alarms"
+          tag="Fig.5 · By detector"
+          subtitle="Recent AI alarms, by the specialist detector that raised them"
+          counts={byDetector}
           color={SOURCE_COLORS.ml}
-          format={attackName}
-          empty="The real attack type is only known for the practice data. Recorded and live traffic come without answers."
+          format={detectorName}
+          empty="No AI alarms yet."
         />
         <BreakdownChart
           title="Rule checker (Snort): which rules went off"

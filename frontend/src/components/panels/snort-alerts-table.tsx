@@ -42,7 +42,7 @@ export function SnortAlertsTable({ alerts }: { alerts: SnortAlert[] }) {
     >
       {shown.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted">
-          No alarms from the rule checker yet. It runs on recorded or live traffic, not on the practice data.
+          No alarms from the rule checker yet.
         </p>
       ) : (
         <div className="max-h-[28rem] overflow-auto rounded-lg border border-line">

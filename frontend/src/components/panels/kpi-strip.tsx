@@ -67,8 +67,6 @@ export function KpiStrip({ live, incidents }: { live: LiveState; incidents: Inci
   const detectors = Object.values(live.detectors);
   const flows = Math.max(0, ...detectors.map((d) => d.samples));
   const flagged = live.breakdown?.ml_flagged_flows ?? 0;
-  const withTruth = detectors.filter((d) => d.accuracy != null);
-  const best = withTruth.length ? withTruth.reduce((a, b) => ((a.accuracy ?? 0) >= (b.accuracy ?? 0) ? a : b)) : null;
   const snort = live.snort;
   const decided = snort ? snort.confirmed + snort.disputed : 0;
   const suspicious = flagged + (snort ? snort.flows.snort_only : 0);
@@ -80,16 +78,12 @@ export function KpiStrip({ live, incidents }: { live: LiveState; incidents: Inci
       hint: snort ? `on ${count(snort.flows.both + snort.flows.snort_only)} connections` : "recorded or live only" },
     { label: "AI agrees with rule checker", ...split(decided ? percent(snort!.confirmed / decided, 1) : "—"),
       hint: decided ? `${count(snort!.confirmed)} of ${count(decided)} alarms` : undefined },
-    { label: "AI verdicts that were right", ...split(best ? percent(best.accuracy) : "—"),
-      hint: best ? "best detector" : "practice data only" },
-    { label: "Attacks the AI caught", ...split(best ? percent(best.detection_rate) : "—"),
-      hint: best ? "out of all real attacks" : "practice data only" },
   ];
 
   return (
     <section className="rounded-xl border border-line bg-surface p-5">
       <Verdict checked={flows} suspicious={suspicious} running={live.activity === "running"} incidents={incidents} />
-      <div className="mt-2 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+      <div className="mt-2 grid grid-cols-2 xl:grid-cols-4">
         {cells.map((c, i) => (
           <Kpi key={c.label} n={String(i + 1).padStart(2, "0")} label={c.label} value={c.value} unit={c.unit} hint={c.hint} />
         ))}

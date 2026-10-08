@@ -2,7 +2,7 @@
 # Start the counselor NIDS with one command.
 #
 #   ./start.sh setup              one-time: Python env, packages, database, login user,
-#                                 trained models, demo capture, frontend packages
+#                                 Snort rules, frontend packages
 #   ./start.sh                    dashboard (Redis, Django API :8000, Next.js :3000);
 #                                 start replays from the browser
 #   ./start.sh live eth0          live: Snort + ML detectors on a network interface, plus the
@@ -52,7 +52,7 @@ ensure_redis() {
   die "Redis did not start (see logs/redis.log)"
 }
 
-have_models() { compgen -G "models/*.joblib" >/dev/null; }
+have_models() { compgen -G "models/live/*.joblib" >/dev/null; }
 
 have_user() {
   (cd backend && "$PY" manage.py shell -c \
@@ -170,7 +170,7 @@ cmd_setup() {
   say "Python environment"
   [[ -x "$PY" ]] || python3 -m venv .venv
   "$PY" -m pip install -q --upgrade pip
-  "$PY" -m pip install -q -e ".[dev,live]"
+  "$PY" -m pip install -q -e ".[web,live]"
 
   say "frontend packages"
   (cd frontend && npm install --no-audit --no-fund)
@@ -181,29 +181,12 @@ cmd_setup() {
   have_user || (cd backend && "$PY" manage.py createsuperuser)
 
   if have_models; then
-    say "trained detectors found in models/"
-  elif [[ -d data/raw/cicids2017 ]]; then
-    say "training detectors (a few minutes)"
-    "$NIDS" train scenario2 --fraction 0.05
-  else
-    warn "no data/raw/cicids2017 — download the datasets (docs/datasets.md), then rerun setup to train"
-  fi
-
-  if compgen -G "models/live/*.joblib" >/dev/null; then
     say "live detectors found in models/live/ (shipped with the repository)"
   else
-    say "live detectors: fetching ~1.3 GB of CSE-CIC-IDS2018 captures and training (about 30 minutes)"
-    "$PY" scripts/live_detectors/fetch_captures.py \
-      && "$PY" scripts/live_detectors/build_dataset.py \
-      && "$PY" scripts/live_detectors/train.py \
-      && "$PY" scripts/live_detectors/make_demo_capture.py \
-      || warn "live detectors not built — live mode will fall back to the CSV-trained models"
+    warn "no live detectors in models/live/ — restore them (git checkout models/live) or rebuild them:"
+    warn "  .venv/bin/pip install -e '.[train]' && see 'Live detectors' in README.md"
   fi
 
-  [[ -f data/pcap/demo-attacks.pcap ]] || {
-    say "demo capture"
-    "$PY" scripts/make_synthetic_capture.py data/pcap/demo-attacks.pcap
-  }
   [[ -f snort/rules/community/snort3-community.rules ]] || {
     say "Snort 3 community rules"
     mkdir -p snort/rules/community
@@ -218,7 +201,7 @@ cmd_setup() {
 cmd_dashboard() {
   need_setup
   ensure_redis
-  have_models || warn "no trained detectors — run ./start.sh setup"
+  have_models || warn "no live detectors in models/live/ — run ./start.sh setup"
   on_signals
   start_dashboard
   watch
@@ -228,7 +211,7 @@ cmd_live() {
   local target=${1:-}
   [[ -n "$target" ]] || die "usage: ./start.sh live <interface | file.pcap>"
   need_setup
-  have_models || die "no trained detectors — run ./start.sh setup"
+  have_models || die "no live detectors in models/live/ — run ./start.sh setup"
   ensure_redis
 
   local capture=(run_bg)
@@ -242,16 +225,10 @@ cmd_live() {
     capture=(run_bg_sudo)
   fi
 
-  # live traffic goes through the Python flow meter: use detectors trained on its features
-  local models=(models/*.joblib)
-  if compgen -G "models/live/*.joblib" >/dev/null; then
-    # model files are pickles, so loading one runs code: only load the promoted, checksummed set
-    [[ -f models/live/SHA256SUMS ]] && (cd models/live && sha256sum --quiet -c SHA256SUMS) \
-      || die "models/live/ does not match its SHA256SUMS — restore it (git checkout models/live) or retrain"
-    models=(models/live/*.joblib)
-  else
-    warn "no live detectors (models/live/) — the CSV-trained models barely work on live flows; run ./start.sh setup"
-  fi
+  # model files are pickles, so loading one runs code: only load the promoted, checksummed set
+  [[ -f models/live/SHA256SUMS ]] && (cd models/live && sha256sum --quiet -c SHA256SUMS) \
+    || die "models/live/ does not match its SHA256SUMS — restore it (git checkout models/live) or retrain"
+  local models=(models/live/*.joblib)
   local snort=1
   command -v snort >/dev/null || { warn "Snort is not installed — running the ML only"; snort=0; }
 

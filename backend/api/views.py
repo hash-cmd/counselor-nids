@@ -61,9 +61,7 @@ class IncidentsView(APIView):
 
 class ResultsView(APIView):
     def get(self, request):
-        return Response({"comparisons": results.comparisons(),
-                         "self_learning": results.self_learning(),
-                         "by_label": results.by_label()})
+        return Response({"by_label": results.by_label()})
 
 
 class SnortView(APIView):
@@ -78,10 +76,9 @@ class SnortView(APIView):
 
 class ReplayStartSerializer(serializers.Serializer):
     replay = serializers.CharField()
-    rate = serializers.FloatField(min_value=10, max_value=50_000, default=1000)
     cross_check = serializers.BooleanField(default=True)
     min_accuracy = serializers.FloatField(min_value=0, max_value=1, default=0.9)
-    snort = serializers.BooleanField(default=True)  # pcap replays only
+    snort = serializers.BooleanField(default=True)
 
 
 class ReplayView(APIView):

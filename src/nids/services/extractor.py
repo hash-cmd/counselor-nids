@@ -1,4 +1,5 @@
-"""Extractor — publishes flow records to the Unknown Samples Repository (Figure 1, 3-4)."""
+"""Extractor — publishes flows to the Unknown Samples Repository (Figure 1, 3-4); live
+capture (live_capture.py) computes them."""
 
 import time
 
@@ -24,22 +25,3 @@ def publish(r: redis.Redis, frame: pd.DataFrame, source: str, timestamp_column: 
 def end(r: redis.Redis, source: str) -> None:
     r.xadd(bus.UNKNOWN, {"kind": bus.END, "source": source})
 
-
-def replay(
-    r: redis.Redis,
-    path: str,
-    source: str,
-    batch_size: int = 500,
-    rate: float | None = None,
-    timestamp_column: str = "record_id",
-    max_rows: int | None = None,
-) -> int:
-    """Replay a flow CSV as a stream; ``rate`` caps rows per second. Returns rows sent."""
-    sent = 0
-    for chunk in pd.read_csv(path, chunksize=batch_size, nrows=max_rows):
-        publish(r, chunk, source, timestamp_column)
-        sent += len(chunk)
-        if rate:
-            time.sleep(len(chunk) / rate)
-    end(r, source)
-    return sent

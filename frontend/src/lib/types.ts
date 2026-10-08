@@ -6,8 +6,6 @@ export type DetectorStats = {
   cross_checked: number;
   fallback: number;
   retrained_on: number;
-  accuracy: number | null;
-  detection_rate: number | null;
 };
 
 export type ReplayStatus =
@@ -16,9 +14,8 @@ export type ReplayStatus =
       id: string;
       state: "running" | "finished" | "failed" | "stopped";
       replay: string;
-      kind: "flows" | "pcap";
+      kind: "pcap";
       snort: boolean;
-      rate: number;
       cross_check: boolean;
       min_accuracy: number;
       started_at: number;
@@ -39,12 +36,11 @@ export type Alert = {
   label?: string;
   /** "ip:port" — packet captures and live traffic only */
   src: string | null;
-  /** "ip:port", or "port N" for replayed flow records */
+  /** "ip:port" */
   dst: string | null;
 };
 
 export type Breakdown = {
-  ml_labels: Record<string, number>;
   snort_rules: Record<string, number>;
   sources: { ip: string; ml: number; snort: number }[];
   ml_flagged_flows: number;
@@ -56,10 +52,9 @@ export type Activity = "idle" | "running" | "ended";
 export type LiveCapture = { target: string; started_at: number; /** "waiting": the interface is down, capture resumes when it is back */ state: "capturing" | "waiting" };
 
 export type ReplayOptions = {
-  replays: { name: string; kind: "flows" | "pcap"; size_mb: number; description: string | null }[];
+  replays: { name: string; kind: "pcap"; size_mb: number; description: string | null }[];
+  /** the live detectors that will judge the recording */
   models: string[];
-  /** detectors trained on Python-flow-meter features, used for packet captures */
-  live_models: string[];
   snort: boolean;
   status: ReplayStatus;
 };
@@ -95,24 +90,6 @@ export type SnortAlert = {
   time: number | null;
 };
 
-export type ComparisonRow = {
-  approach: string;
-  label: string;
-  accuracy: number | null;
-  detection_rate: number | null;
-  false_alarm_rate: number | null;
-};
-
-export type SelfLearningRow = {
-  chunk: number;
-  detector: string;
-  retrain: boolean;
-  labels: string;
-  standalone_accuracy: number;
-  final_accuracy: number;
-  learned: number;
-};
-
 export type Metrics = { accuracy: number; detection_rate: number; false_alarm_rate: number };
 
 export type ByLabelTable = {
@@ -122,9 +99,7 @@ export type ByLabelTable = {
 };
 
 export type Results = {
-  by_label: Partial<Record<"coverage_cse2018" | "coverage_cicids2017" | "live", ByLabelTable>>;
-  comparisons: Record<string, { detectors: Record<string, ComparisonRow[]>; args: Record<string, unknown> | null }>;
-  self_learning: Record<string, SelfLearningRow[]>;
+  by_label: Partial<Record<"live", ByLabelTable>>;
 };
 
 export type AttackTest = { start: number; end: number | null; note: string };

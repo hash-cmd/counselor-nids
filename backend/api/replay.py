@@ -1,11 +1,9 @@
-"""Start and stop a replay from the dashboard.
+"""Start and stop a test replay of a recorded capture from the dashboard.
 
-A replay runs the same services as the command line, as subprocesses of the API — the
-Observer and one detector service per trained model, fed by either
-  * a flow CSV (data/replay/*.csv) through the Extractor, or
-  * a packet capture (data/pcap/*.pcap) through the live Extractor, with Snort run on
-    the same capture and its alerts linked to the flows and the ML verdicts.
-One replay at a time.
+A replay runs the same services as live monitoring, as subprocesses of the API — the
+Observer, one detector service per live model, the capture Extractor reading the
+recording (data/pcap/*.pcap), and Snort on the same recording with its alerts linked to
+the flows and the ML verdicts. One replay at a time.
 """
 
 import os
@@ -31,26 +29,16 @@ class ReplayError(Exception):
     pass
 
 
-def replay_dir() -> Path:
-    return settings.NIDS_ROOT / "data" / "replay"
-
-
 def pcap_dir() -> Path:
     return settings.NIDS_ROOT / "data" / "pcap"
 
 
 def models_dir() -> Path:
-    return settings.NIDS_ROOT / "models"
+    return settings.NIDS_ROOT / "models" / "live"
 
 
-def models_for(kind: str) -> list[Path]:
-    """Detectors for a replay. Packet captures go through the Python flow meter, like live
-    traffic, so they use the live detectors (trained on its features) when present;
-    flow records use the detectors trained on the published CSVs."""
-    if kind == "pcap":
-        live = sorted((models_dir() / "live").glob("*.joblib"))
-        if live:
-            return live
+def models() -> list[Path]:
+    """The live detectors: recordings go through the same flow meter as live traffic."""
     return sorted(models_dir().glob("*.joblib"))
 
 
@@ -59,10 +47,7 @@ def snort_available() -> bool:
 
 
 def _files() -> dict[str, tuple[str, Path]]:
-    # packet captures first: they run with Snort, which flow records cannot
-    files = {p.name: ("pcap", p) for p in sorted([*pcap_dir().glob("*.pcap"), *pcap_dir().glob("*.pcapng")])}
-    files |= {p.name: ("flows", p) for p in sorted(replay_dir().glob("*.csv"))}
-    return files
+    return {p.name: ("pcap", p) for p in sorted([*pcap_dir().glob("*.pcap"), *pcap_dir().glob("*.pcapng")])}
 
 
 def _description(path: Path) -> str | None:
@@ -75,11 +60,8 @@ def available() -> dict:
     replays = [{"name": name, "kind": kind, "size_mb": round(path.stat().st_size / 1e6, 1),
                 "description": _description(path)}
                for name, (kind, path) in _files().items()]
-    # real traffic first: it is the honest demo of the ML
-    replays.sort(key=lambda r: (r["kind"] != "pcap", not r["name"].startswith("real"), r["name"]))
-    return {"replays": replays, "models": sorted(p.stem for p in models_dir().glob("*.joblib")),
-            "live_models": [p.stem for p in models_for("pcap")] if (models_dir() / "live").is_dir() else [],
-            "snort": snort_available()}
+    replays.sort(key=lambda r: (not r["name"].startswith("real"), r["name"]))
+    return {"replays": replays, "models": [p.stem for p in models()], "snort": snort_available()}
 
 
 @dataclass
@@ -88,7 +70,6 @@ class Run:
     replay: str
     kind: str
     snort: bool
-    rate: float
     cross_check: bool
     min_accuracy: float
     started_at: float
@@ -106,8 +87,7 @@ class ReplayManager:
     def _command(self, *args: str) -> list[str]:
         return [sys.executable, "-m", "nids.cli", *args]
 
-    def start(self, replay: str, rate: float, cross_check: bool, min_accuracy: float,
-              snort: bool = True) -> dict:
+    def start(self, replay: str, cross_check: bool, min_accuracy: float, snort: bool = True) -> dict:
         with self._lock:
             if self._run and self._state(self._run) == "running":
                 raise ReplayError("a replay is already running")
@@ -115,12 +95,11 @@ class ReplayManager:
             if replay not in files:
                 raise ReplayError(f"unknown replay {replay!r}")
             kind, path = files[replay]
-            snort = snort and kind == "pcap"
             if snort and not snort_available():
                 raise ReplayError("Snort is not installed on the API host")
-            models = models_for(kind)
-            if not models:
-                raise ReplayError("no trained models: run `nids train scenario2` first")
+            detectors = models()
+            if not detectors:
+                raise ReplayError("no live detectors in models/live/ (run ./start.sh setup)")
 
             r = get_redis()
             live = monitor.read_live(r)
@@ -128,7 +107,7 @@ class ReplayManager:
                 raise ReplayError(f"live monitoring is running on {live['target']}: stop it "
                                   "(Ctrl+C in its terminal) before starting a test")
             bus.reset(r)
-            run = Run(id=str(int(time.time() * 1000)), replay=replay, kind=kind, snort=snort, rate=rate,
+            run = Run(id=str(int(time.time() * 1000)), replay=replay, kind=kind, snort=snort,
                       cross_check=cross_check, min_accuracy=min_accuracy,
                       started_at=time.time(), log_dir=tempfile.mkdtemp(prefix="nids-replay-"))
             r.set(RUN_KEY, run.id)
@@ -137,24 +116,16 @@ class ReplayManager:
 
             env = {**os.environ, "NIDS_REDIS_URL": settings.NIDS_REDIS_URL}
             commands = {"observer": self._command("observe", "--exit-on-end")}
-            # Packet captures use the live detectors on Python-flow-meter features; drop
-            # their unresolved-conflict guesses, which are the main live false alarms.
-            live = kind == "pcap"
-            for model in models:
+            # as live mode runs: unresolved-conflict guesses (the main false alarms) dropped
+            for model in detectors:
                 commands[model.stem] = self._command(
                     "detect", str(model), "--sources", "replay", "--min-accuracy", str(min_accuracy),
-                    "--exit-on-end", *(["--cross-check"] if cross_check else []),
-                    *(["--suppress-fallback"] if live else []))
-            if kind == "pcap":
-                commands["extractor"] = self._command(
-                    "extract", "--live", str(path), "--source", "replay", "--wait-for", str(len(models)))
-                if snort:
-                    commands["snort"] = self._command(
-                        "snort", "--pcap", str(path), "--min-accuracy", str(min_accuracy))
-            else:
-                commands["extractor"] = self._command(
-                    "extract", str(path), "--source", "replay", "--wait-for", str(len(models)),
-                    "--rate", str(rate), "--batch-size", "500")
+                    "--exit-on-end", "--suppress-fallback", *(["--cross-check"] if cross_check else []))
+            commands["extractor"] = self._command(
+                "extract", "--live", str(path), "--source", "replay", "--wait-for", str(len(detectors)))
+            if snort:
+                commands["snort"] = self._command(
+                    "snort", "--pcap", str(path), "--min-accuracy", str(min_accuracy))
             for name, command in commands.items():
                 log = open(Path(run.log_dir) / f"{name}.log", "w")
                 run.processes[name] = Popen(command, stdout=log, stderr=STDOUT, env=env)
@@ -201,7 +172,6 @@ class ReplayManager:
             run.finished_at = time.time()
         described = {
             "id": run.id, "state": state, "replay": run.replay, "kind": run.kind, "snort": run.snort,
-            "rate": run.rate,
             "cross_check": run.cross_check, "min_accuracy": run.min_accuracy,
             "started_at": run.started_at, "finished_at": run.finished_at,
             "processes": {name: ("running" if p.poll() is None else f"exited {p.returncode}")

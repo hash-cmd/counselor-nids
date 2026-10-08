@@ -7,7 +7,7 @@ from corsheaders.defaults import default_headers
 from decouple import Csv, config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-# Repository root: holds models/, data/replay/ and results/.
+# Repository root: holds models/, data/pcap/ and results/.
 NIDS_ROOT = Path(config("NIDS_ROOT", default=str(BASE_DIR.parent)))
 NIDS_REDIS_URL = config("NIDS_REDIS_URL", default="redis://localhost:6379/0")
 

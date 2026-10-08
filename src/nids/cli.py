@@ -1,9 +1,8 @@
-"""``nids`` command line: train detectors and run the distributed services.
+"""``nids`` command line: run the distributed services.
 
-    nids train scenario2 --fraction 0.05     # models/*.joblib + data/replay/scenario2.csv
     nids observe                             # Observer
-    nids detect models/detector1.joblib --sources cicids2017 --cross-check
-    nids extract data/replay/scenario2.csv --source cicids2017 --wait-for 2
+    nids detect models/live/live_dos.joblib --sources live --cross-check --suppress-fallback
+    nids extract --live wlan0 --source live --wait-for 3     # or --live capture.pcap
     nids monitor
     nids snort --pcap capture.pcap           # Snort + link its alerts to flows and ML verdicts
     nids health                              # which services are alive (exit 1 if any is down)
@@ -23,41 +22,20 @@ import joblib
 from .datasets.paths import PROJECT_ROOT
 
 
-def train(args) -> None:
-    from . import scenarios
-
-    if args.scenario == "scenario1":
-        setup = scenarios.scenario1(args.protocol, seed=args.seed)
-    else:
-        setup = scenarios.scenario2(args.fraction, seed=args.seed)
-    args.models.mkdir(parents=True, exist_ok=True)
-    for detector in setup.detectors:
-        joblib.dump(detector, args.models / f"{detector.name}.joblib", compress=3)
-        print("saved", args.models / f"{detector.name}.joblib")
-    replay = args.replay or PROJECT_ROOT / "data" / "replay" / f"{args.scenario}.csv"
-    replay.parent.mkdir(parents=True, exist_ok=True)
-    setup.test.to_csv(replay, index=False)
-    print(f"saved {len(setup.test):,} unseen test flows to {replay}")
-
-
 def extract(args) -> None:
     from .services import bus, extractor
 
     r = bus.connect(args.redis)
     if args.wait_for:
         extractor.wait_for_subscribers(r, args.wait_for)
-    if args.live:
-        from .services import live_capture
-        if not args.live.endswith((".pcap", ".pcapng")):
-            # start.sh stops services with SIGTERM; exit through the normal path so the
-            # flow meter is stopped and the dashboard stops showing live monitoring.
-            signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-        sent = live_capture.capture(r, args.live, args.source, args.batch_size,
-                                     drop_empty_flows=not args.keep_empty_flows)
-    else:
-        sent = extractor.replay(r, args.csv, args.source, args.batch_size, args.rate,
-                                args.timestamp_column, args.max_rows)
-    print(f"published {sent:,} flows from {args.live or args.csv}")
+    from .services import live_capture
+    if not args.live.endswith((".pcap", ".pcapng")):
+        # start.sh stops services with SIGTERM; exit through the normal path so the
+        # flow meter is stopped and the dashboard stops showing live monitoring.
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    sent = live_capture.capture(r, args.live, args.source, args.batch_size,
+                                drop_empty_flows=not args.keep_empty_flows)
+    print(f"published {sent:,} flows from {args.live}")
 
 
 def observe(args) -> None:
@@ -142,23 +120,11 @@ def main(argv=None) -> None:
     parser.add_argument("--redis", help="Redis URL (default $NIDS_REDIS_URL)")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("train", help="train detectors and write a replay file of unseen flows")
-    p.add_argument("scenario", choices=["scenario1", "scenario2"])
-    p.add_argument("--protocol", default="holdout", help="scenario 1 only")
-    p.add_argument("--fraction", type=float, default=0.05, help="scenario 2 only")
-    p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--models", type=Path, default=PROJECT_ROOT / "models")
-    p.add_argument("--replay", type=Path)
-    p.set_defaults(func=train)
-
-    p = sub.add_parser("extract", help="publish flows to the Unknown Samples Repository")
-    p.add_argument("csv", nargs="?", help="flow CSV to replay")
-    p.add_argument("--live", metavar="INTERFACE", help="capture live traffic instead (needs cicflowmeter)")
+    p = sub.add_parser("extract", help="capture traffic and publish its flows to the detectors")
+    p.add_argument("--live", metavar="INTERFACE_OR_PCAP", required=True,
+                   help="network interface to capture (needs root or CAP_NET_RAW), or a .pcap to read")
     p.add_argument("--source", required=True, help="data source name detectors subscribe to")
     p.add_argument("--batch-size", type=int, default=500)
-    p.add_argument("--rate", type=float, help="max flows per second")
-    p.add_argument("--timestamp-column", default="record_id")
-    p.add_argument("--max-rows", type=int)
     p.add_argument("--wait-for", type=int, default=0, help="wait until N detectors subscribed")
     p.add_argument("--keep-empty-flows", action="store_true",
                    help="live: also send connection-only flows (scans) to the ML (noisier)")
@@ -217,8 +183,6 @@ def main(argv=None) -> None:
     p.set_defaults(func=reset)
 
     args = parser.parse_args(argv)
-    if args.command == "extract" and not (args.csv or args.live):
-        parser.error("extract needs a CSV path or --live INTERFACE")
     args.func(args)
 
 

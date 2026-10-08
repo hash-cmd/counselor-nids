@@ -32,8 +32,7 @@ from build_dataset import SOURCES, flowmeter  # noqa: E402
 
 from nids.counselor import CounselorNetwork  # noqa: E402
 from nids.datasets.flow_features import CIC2018_TO_2017  # noqa: E402
-from nids.datasets.paths import PROJECT_ROOT  # noqa: E402
-from nids.reporting import RESULTS_DIR  # noqa: E402
+from nids.datasets.paths import PROJECT_ROOT, RESULTS_DIR  # noqa: E402
 from nids.services import flow_index  # noqa: E402
 from nids.services.live_capture import carries_payload  # noqa: E402
 from nids.services.snort_bridge import HOST_LEVEL_GIDS, HOST_WINDOW, snort_command  # noqa: E402

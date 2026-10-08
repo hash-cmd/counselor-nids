@@ -5,8 +5,7 @@ import { Card } from "@/components/ui/chart-parts";
 import { SOURCE_COLORS } from "@/components/charts/detection-timeline";
 
 /** Addresses that sent the first packet of the most flagged flows. For connections already
- *  open when capture started, that can be the victim answering, so this is a lead, not proof. Needs packet captures or live traffic:
- *  replayed flow records carry no addresses. */
+ *  open when capture started, that can be the victim answering, so this is a lead, not proof. */
 export function TopSources({ sources }: { sources: Breakdown["sources"] }) {
   const max = Math.max(1, ...sources.map((s) => Math.max(s.ml, s.snort)));
   return (
@@ -16,7 +15,7 @@ export function TopSources({ sources }: { sources: Breakdown["sources"] }) {
     >
       {sources.length === 0 ? (
         <p className="flex h-40 items-center justify-center px-6 text-center text-sm text-muted">
-          Addresses are shown for recorded and live traffic. The practice data doesn&apos;t include them.
+          No suspicious traffic yet.
         </p>
       ) : (
         <table className="w-full text-xs">

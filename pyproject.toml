@@ -1,7 +1,7 @@
 [project]
 name = "nids"
 version = "0.1.0"
-description = "Counselors-based network intrusion detection system (reproduction of Quincozes et al., 2019)"
+description = "Network intrusion detection: counselor-based ML detectors and Snort on live traffic"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -9,17 +9,16 @@ dependencies = [
     "pandas",
     "scikit-learn",
     "joblib",
-    "matplotlib",
 ]
 
 [project.optional-dependencies]
-service = ["redis[hiredis]"]
 live = ["redis[hiredis]", "cicflowmeter"]
 web = [
     "redis[hiredis]", "django", "djangorestframework", "djangorestframework-simplejwt",
     "django-cors-headers", "channels", "daphne", "python-decouple", "whitenoise",
 ]
-dev = ["pytest", "jupyterlab", "nbconvert", "fakeredis", "nids[web]"]
+# retraining and testing the live detectors (scripts/live_detectors/)
+train = ["fakeredis", "nids[live]"]
 
 [project.scripts]
 nids = "nids.cli:main"
@@ -30,9 +29,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
 
 [tool.pyrefly]
 search-path = ["src", ".", "backend"]

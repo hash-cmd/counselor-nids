@@ -1,4 +1,4 @@
-import { count, percent, seriesColor } from "@/lib/format";
+import { count, seriesColor } from "@/lib/format";
 import { detectorKnows, detectorName } from "@/lib/plain";
 import type { DetectorStats } from "@/lib/types";
 
@@ -40,11 +40,9 @@ export function DetectorTiles({ detectors }: { detectors: Record<string, Detecto
               {detectorName(name)}
             </h2>
             <p className="mb-4 mt-0.5 text-xs text-ink-2">{knows ? `Specialist in ${knows}.` : name}</p>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4">
               <Stat label="Connections checked" value={count(s.samples)} />
               <Stat label="Attacks flagged" value={count(s.flagged)} />
-              <Stat label="Verdicts right" value={percent(s.accuracy)} hint={s.accuracy == null ? "practice data only" : undefined} />
-              <Stat label="Attacks caught" value={percent(s.detection_rate)} hint={s.detection_rate == null ? "practice data only" : undefined} />
             </div>
             <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-line pt-3 text-xs sm:grid-cols-4">
               {TEAMWORK.map(([label, key, hint]) => (

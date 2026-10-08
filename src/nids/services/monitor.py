@@ -10,8 +10,7 @@ from . import bus
 
 
 def read_stats(r: redis.Redis) -> dict[str, dict]:
-    """Counters of every subscribed detector, with accuracy and detection rate as fractions
-    (None when the replayed data carries no ground truth)."""
+    """Counters of every subscribed detector."""
     stats = {}
     for name in sorted(bus.text(n) for n in r.hkeys(bus.SUBSCRIPTIONS)):
         raw = {bus.text(k): int(v) for k, v in r.hgetall(bus.stats(name)).items()}
@@ -24,9 +23,6 @@ def read_stats(r: redis.Redis) -> dict[str, dict]:
             "cross_checked": raw.get("resolution:cross_check", 0),
             "fallback": raw.get("resolution:fallback", 0),
             "retrained_on": raw.get("retrained_on", 0),
-            "accuracy": raw["correct"] / samples if "correct" in raw and samples else None,
-            "detection_rate": (raw["detected_attacks"] / raw["true_attacks"]
-                               if raw.get("true_attacks") else None),
         }
     return stats
 
@@ -54,8 +50,7 @@ def _top(r: redis.Redis, key: str, n: int) -> dict[str, int]:
 
 
 def read_breakdown(r: redis.Redis, n: int = 8) -> dict:
-    """What was flagged: ML-flagged flows by true label, Snort alerts by rule, and the
-    sources behind both (packet captures only)."""
+    """What was flagged: Snort alerts by rule, and the sources behind ML and Snort alerts."""
     ml_sources, snort_sources = _top(r, bus.ML_SOURCES, 50), _top(r, bus.SNORT_SOURCES, 50)
     sources = [
         {"ip": ip, "ml": ml_sources.get(ip, 0), "snort": snort_sources.get(ip, 0)}
@@ -63,7 +58,6 @@ def read_breakdown(r: redis.Redis, n: int = 8) -> dict:
     ]
     sources.sort(key=lambda s: -(s["ml"] + s["snort"]))
     return {
-        "ml_labels": _top(r, bus.ML_LABELS, n),
         "snort_rules": _top(r, bus.SNORT_RULES, n),
         "sources": sources[:n],
         "ml_flagged_flows": r.scard(bus.FLAGGED_ML),
@@ -212,15 +206,7 @@ def read_incidents(r: redis.Redis, source: str = "all", query: str = "", limit: 
 
 
 def snapshot(r: redis.Redis) -> pd.DataFrame:
-    rows = {}
-    for name, s in read_stats(r).items():
-        row: dict[str, object] = {k: v for k, v in s.items() if k not in ("accuracy", "detection_rate")}
-        if s["accuracy"] is not None:
-            row["accuracy"] = f"{s['accuracy']:.2%}"
-        if s["detection_rate"] is not None:
-            row["detection_rate"] = f"{s['detection_rate']:.2%}"
-        rows[name] = row
-    return pd.DataFrame(rows).T
+    return pd.DataFrame(read_stats(r)).T
 
 
 def run(r: redis.Redis, interval: float = 2.0, once: bool = False) -> None:
