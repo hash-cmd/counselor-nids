@@ -39,6 +39,11 @@ Your normal traffic should produce few incidents. On the **Alerts** page:
   request attempt" fire on ordinary RDP use; run with `NIDS_SNORT_COMMUNITY=0` to compare
   against the project's rules alone.
 - Click an incident for its source, destination and which detector raised it.
+- On **AI detectors**, the *rule checker as a counselor* panel shows how many of the
+  detectors' doubts Snort settled, and how much the AI has come to trust each Snort rule.
+  Rules that fire on your ordinary traffic (often Windows policy rules) should drift below
+  90% and stop counting as advice. Trust is kept in `logs/snort-trust.json`: delete it to
+  start afresh, or run with `NIDS_SNORT_COUNSELOR=0` to compare without Snort's advice.
 
 Note the numbers on the Overview (flows analysed, flagged by the ML, Snort alerts). The
 logs are in `logs/` — send those and the numbers if anything looks wrong.

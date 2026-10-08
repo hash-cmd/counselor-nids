@@ -28,11 +28,15 @@ To remove everything: `sudo deploy/install-systemd.sh --uninstall`. The settings
 |---|---|
 | `nids-capture` | traffic capture and flow meter (`nids extract --live`) |
 | `nids-observer` | routes flows to the detectors |
-| `nids-detector@<model>` | one per file in `models/live/` |
+| `nids-detector@<model>` | one per file in `models/live/`, with Snort as a counselor (`--snort-counselor`) |
 | `nids-snort` | Snort on the same interface, linked to the ML verdicts |
 | `nids-journal` | the false-alarm record in `logs/journal/` |
 | `nids-api`, `nids-web` | Daphne API on :8000, Next.js dashboard on :3000 |
 | `nids-health.timer` | `nids health` every minute |
+
+To run the detectors without Snort's advice, remove `--snort-counselor` from
+`/etc/systemd/system/nids-detector@.service`, then run `sudo systemctl daemon-reload` and
+restart `nids.target`.
 
 ## How it stays up
 
@@ -74,6 +78,7 @@ Every service sends a heartbeat to Redis every second or so.
 | Services under systemd | the system journal: `journalctl -u 'nids-*' -f` | journald's own rotation |
 | Services under `./start.sh` | `logs/<service>.log` | over 20 MB at start, moved to `.log.1` (one old copy kept) |
 | Alert journal (false alarms) | `logs/journal/<day>.jsonl` | 365 days (`nids journal --keep-days N`) |
+| Snort rule trust (Snort as a counselor) | `logs/snort-trust.json` | until deleted; delete it to start trust afresh |
 
 ## Serving the dashboard to other machines
 

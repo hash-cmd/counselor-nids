@@ -47,7 +47,7 @@ network (wlan0) ┤                                            ├─> correlato
 | `nids extract --live IFACE` | captures traffic; the Python cicflowmeter turns packets into connection flows |
 | `nids observe` | routes each batch of flows to the detectors |
 | `nids detect MODEL` | one AI detector: classifies flows, asks the others for advice, answers their requests |
-| `nids snort --interface IFACE` | runs Snort on the same traffic and links each alert to its flow and the AI's verdict |
+| `nids snort --interface IFACE` | runs Snort on the same traffic, links each alert to its flow and the AI's verdict, and makes Snort's advice available to unsure detectors |
 | `nids journal` | keeps every alert on disk, to measure false alarms over days |
 | `nids health` | lists the services that are alive (exit 1 if any is down) |
 
