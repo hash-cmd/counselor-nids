@@ -107,11 +107,37 @@ def interface_up(name: str) -> bool:
         return False
 
 
+FLUSH_INTERVAL = 2.0  # seconds; publish pending flows at least this often on a quiet network
+
+
 def _stream(r: redis.Redis, out: str, process: subprocess.Popen, source: str, batch_size: int,
-            drop_empty_flows: bool, next_id: int, heartbeat=None) -> tuple[int, int]:
-    """Follow one flow-meter run and publish its flows. Returns (flows sent, next record id)."""
-    sent, pending = 0, []
-    for flows in _follow_csv(out, process, heartbeat=heartbeat):
+            drop_empty_flows: bool, next_id: int, heartbeat=None, flush_interval: float = FLUSH_INTERVAL,
+            now=time.monotonic) -> tuple[int, int]:
+    """Follow one flow-meter run and publish its flows. Returns (flows sent, next record id).
+
+    Flows are published when ``batch_size`` accumulate, when the flow meter stops, or every
+    ``flush_interval`` seconds — the last is what keeps a quiet live network responsive, where
+    a count-only batch could take minutes to fill and the detectors would sit idle meanwhile.
+    """
+    sent, pending, last_flush = 0, [], now()
+
+    def flush():
+        nonlocal sent, pending, last_flush
+        if pending:
+            batch = pd.concat(pending, ignore_index=True)
+            # every detector sees this same flow stream, so advice matches on record_id
+            extractor.publish(r, batch, source)
+            sent += len(batch)
+            pending = []
+        last_flush = now()
+
+    def tick():  # runs on every poll, including idle ones with no new flows
+        if heartbeat:
+            heartbeat()
+        if pending and now() - last_flush >= flush_interval:
+            flush()
+
+    for flows in _follow_csv(out, process, heartbeat=tick):
         flows = python_flows_to_2017(connection_columns(flows))
         flows["record_id"] = range(next_id, next_id + len(flows))
         flow_index.index_flows(r, flows.rename(columns={"conn_dst_port": "dst_port"}))
@@ -120,16 +146,9 @@ def _stream(r: redis.Redis, out: str, process: subprocess.Popen, source: str, ba
             flows = flows[carries_payload(flows)]
         if len(flows):
             pending.append(flows)
-        if pending and (sum(map(len, pending)) >= batch_size or process.poll() is not None):
-            batch = pd.concat(pending, ignore_index=True)
-            # every detector sees this same flow stream, so advice matches on record_id
-            extractor.publish(r, batch, source)
-            sent += len(batch)
-            pending = []
-    if pending:
-        batch = pd.concat(pending, ignore_index=True)
-        extractor.publish(r, batch, source)
-        sent += len(batch)
+        if sum(map(len, pending)) >= batch_size or process.poll() is not None:
+            flush()
+    flush()
     return sent, next_id
 
 
