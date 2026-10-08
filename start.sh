@@ -185,7 +185,7 @@ cmd_setup() {
   fi
 
   if compgen -G "models/live/*.joblib" >/dev/null; then
-    say "live detectors found in models/live/"
+    say "live detectors found in models/live/ (shipped with the repository)"
   else
     say "live detectors: fetching ~1.3 GB of CSE-CIC-IDS2018 captures and training (about 30 minutes)"
     "$PY" scripts/live_detectors/fetch_captures.py \
@@ -240,6 +240,9 @@ cmd_live() {
   # live traffic goes through the Python flow meter: use detectors trained on its features
   local models=(models/*.joblib)
   if compgen -G "models/live/*.joblib" >/dev/null; then
+    # model files are pickles, so loading one runs code: only load the promoted, checksummed set
+    [[ -f models/live/SHA256SUMS ]] && (cd models/live && sha256sum --quiet -c SHA256SUMS) \
+      || die "models/live/ does not match its SHA256SUMS — restore it (git checkout models/live) or retrain"
     models=(models/live/*.joblib)
   else
     warn "no live detectors (models/live/) — the CSV-trained models barely work on live flows; run ./start.sh setup"

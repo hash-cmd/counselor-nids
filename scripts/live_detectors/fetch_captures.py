@@ -31,6 +31,9 @@ CAPTURES = [  # (day, member in that day's pcap.zip)
     ("Thursday-15-02-2018", "pcap/UCAP172.31.69.25"),          # DoS GoldenEye, Slowloris victim
     ("Friday-16-02-2018", "pcap/UCAP172.31.69.25-part1.pcap"),  # DoS Hulk, SlowHTTPTest victim
     ("Thursday-22-02-2018", "pcap/UCAP172.31.69.28"),          # web attacks victim
+    ("Friday-02-03-2018", "pcap/capEC2AMAZ-O4EL3NG-172.31.69.26"),  # Ares botnet-infected host
+    ("Friday-02-03-2018", "pcap/capEC2AMAZ-O4EL3NG-172.31.69.12"),  # Ares botnet-infected host
+    ("Friday-02-03-2018", "pcap/capEC2AMAZ-O4EL3NG-172.31.69.14"),  # held-out infected host (cross-host test)
 ]
 
 

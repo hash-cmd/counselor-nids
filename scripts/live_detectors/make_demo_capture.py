@@ -78,7 +78,8 @@ def main():
             print(f"{source.capture}: {n:,} packets", flush=True)
     OUT.with_name(OUT.name + ".txt").write_text(
         "Real attacks recorded in a test lab in 2018 (CSE-CIC-IDS2018), from moments the AI never learned from: "
-        "flooding attacks, password guessing and website attacks, mixed with normal office traffic. "
+        "flooding attacks, password guessing, website attacks and botnet-infected machines calling "
+        "their control server, mixed with normal office traffic. "
         "A fair test of what the system catches.\n")  # shown in the dashboard
     print(f"wrote {written:,} packets to {OUT}")
 

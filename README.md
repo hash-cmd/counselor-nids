@@ -243,6 +243,7 @@ packets ──> Snort (snort/nids.lua, snort/rules/nids.rules) ──> alert_jso
 nids observe --exit-on-end &
 nids detect models/live/live_dos.joblib --sources live --cross-check --exit-on-end &
 nids detect models/live/live_access.joblib --sources live --cross-check --exit-on-end &
+nids detect models/live/live_bot.joblib --sources live --cross-check --exit-on-end &
 nids snort --pcap data/pcap/real-attacks-2018.pcap &
 nids extract --live data/pcap/real-attacks-2018.pcap --source live --wait-for 2
 ```
@@ -336,24 +337,42 @@ Live capture computes features with the Python cicflowmeter, which differs from 
 CICFlowMeter behind the published CSVs in 71 of 154 feature medians (packet lengths include
 headers, flags and windows are counted differently, flows split differently). **The
 CSV-trained detectors flag 0% of brute-force flows computed this way.** So live mode and
-packet-capture replays use two detectors trained on flows computed the live way, from the
-dataset's raw captures:
+packet-capture replays use three detectors trained on flows computed the live way, from the
+dataset's raw captures: `live_dos` (DoS), `live_access` (FTP/SSH brute force, web attacks) and
+`live_bot` (botnet — Ares-infected Windows hosts calling their command-and-control server).
+The promoted models ship in `models/live/`, so `./start.sh setup` does not need to rebuild them:
 
 ```bash
 python scripts/live_detectors/fetch_captures.py   # ~1.3 GB: single hosts' captures via HTTP range requests
 python scripts/live_detectors/build_dataset.py    # attack windows found in the packets; Python flow meter; labels
-python scripts/live_detectors/train.py            # models/live/live_dos.joblib, live_access.joblib
+python scripts/live_detectors/train.py            # models/live/*.joblib, if they pass the promotion gate
+python scripts/live_detectors/cross_host.py       # botnet test on an infected host never trained on
 python scripts/live_detectors/make_demo_capture.py   # data/pcap/real-attacks-2018.pcap (held-out minutes)
 ```
 
-(`./start.sh setup` runs these.) Test on the later 30% of each attack, by time:
+Test on the later 30% of each attack, by time (counselor network as live mode runs it):
 
-| Test flows | live_dos | live_access | Counselor network |
-|---|---|---|---|
-| DoS SlowHTTPTest / FTP brute force | 100% / 100% | 100% / 99.99% | 100% / 100% |
-| DoS Hulk / GoldenEye / Slowloris | 99.8% / 98.9% / 94.9% | 23% / 10% / 0% | 99.7% / 98.9% / 93.6% |
-| SSH brute force / web attacks | 0% / 0% | 99.6% / 100% | 99.6% / 89.4% |
-| **Benign (false alarms)** | 0.14% | 0.02% | **0.02%** |
+| Test flows | live_dos | live_access | live_bot | Counselor network |
+|---|---|---|---|---|
+| DoS SlowHTTPTest / FTP brute force | 100% / 100% | 100% / 99.99% | 0% / 0% | 100% / 100% |
+| DoS Hulk / GoldenEye / Slowloris | 99.8% / 98.9% / 94.9% | 23% / 10% / 0% | 0% | 99.6% / 98.9% / 93.6% |
+| SSH brute force / web attacks | 0% / 0% | 99.6% / 100% | 0% | 99.6% / 87.9% |
+| Botnet | 0% | 99.9% | 99.9% | 99.9% |
+| **Benign (false alarms)** | 0.10% | 0.67% | 0.00% | **0.00%** (0 of 8,103) |
+
+On a third infected host whose traffic was never used for training (`172.31.69.14`,
+`cross_host.py`), the system catches **99.7%** of its 15,240 botnet flows with **0 false
+alarms** on its 4,456 normal flows.
+
+**Keeping retrains safe.** The split sorts flows stably: start times have one-second
+resolution, and an unstable sort put tied flows in a different order whenever captures were
+added, which alone swung false alarms between 0 and 921. Even so, the web-attack class is tiny
+(~150 training flows), and retraining `live_access` on more normal traffic can drop it from
+88% to 23%. So `train.py` has a **promotion gate**: new models replace the installed ones only
+if no attack type's detection drops by more than 2 points and false alarms do not rise, compared
+with `models/live/manifest.json` (`--force` overrides). `--only live_bot` trains one detector
+and keeps the others. Model files are pickles, which run code when loaded, so promotion writes
+`models/live/SHA256SUMS` and `./start.sh live` refuses to load models that do not match it.
 
 Two things keep live false alarms down, both at inference time (the models are unchanged, so
 the experiment numbers above are untouched; both are proven on the 339k-flow live set):
@@ -370,8 +389,8 @@ the experiment numbers above are untouched; both are proven on the 339k-flow liv
   false alarms (e.g. on HTTPS) yet accounts for 16 of ~190k real detections; suppressing it
   takes benign false alarms from 0.02% to 0.00% at a 0.01-point cost in detection.
 
-Limits: one attacker per attack type in one lab network; no live botnet, DDoS or infiltration
-detector (no single victim capture). Scans and payload exploits are Snort's job, not the ML's.
+Limits: one attacker per attack type in one lab network; the botnet detector knows one botnet
+family (Ares) and its C2 server; no live DDoS or infiltration detector (no single victim capture). Scans and payload exploits are Snort's job, not the ML's.
 Watch the false-alarm rate on your own network (docs/live-testing.md).
 
 ## Differences from the paper
@@ -425,5 +444,5 @@ nids/
 ```
 
 Not in git (created locally): `data/` (raw datasets, replay files, captures, processed
-flows — see [docs/datasets.md](docs/datasets.md)), `models/` (trained detectors; `models/live/`
-for the live ones), `results/` (experiment outputs), `logs/` (service logs).
+flows — see [docs/datasets.md](docs/datasets.md)), `models/` (trained detectors, except the
+shipped `models/live/`), `results/` (experiment outputs), `logs/` (service logs).

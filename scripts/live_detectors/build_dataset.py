@@ -53,6 +53,10 @@ SOURCES = [
            {"13.59.126.31": "DoS-SlowHTTPTest", "18.219.193.20": "DoS-Hulk"}),
     Source("Thursday-22-02-2018_UCAP172.31.69.28", "172.31.69.28",
            {"18.218.115.60": "Web-attack"}),
+    # Botnet: the infected Windows host is the "victim" and the Ares C2 server the "attacker"
+    # (verified: 18.219.211.138 is each infected host's top talker all afternoon).
+    Source("Friday-02-03-2018_capEC2AMAZ-O4EL3NG-172.31.69.26", "172.31.69.26", {"18.219.211.138": "Bot"}),
+    Source("Friday-02-03-2018_capEC2AMAZ-O4EL3NG-172.31.69.12", "172.31.69.12", {"18.219.211.138": "Bot"}),
     Source("Wednesday-14-02-2018_capPC1-172.31.64.34", None, benign_packets=None),  # all of it
 ]
 

@@ -1,0 +1,63 @@
+{
+  "promoted_at": "2026-10-08T18:19:18+00:00",
+  "knowledge": {
+    "live_dos": [
+      "DoS-GoldenEye",
+      "DoS-Slowloris",
+      "DoS-Hulk",
+      "DoS-SlowHTTPTest"
+    ],
+    "live_access": [
+      "FTP-BruteForce",
+      "SSH-Bruteforce",
+      "Web-attack"
+    ],
+    "live_bot": [
+      "Bot"
+    ]
+  },
+  "metrics": {
+    "accuracy": 0.9943806387462256,
+    "detection_rate": 0.9939321105616737,
+    "false_alarm_rate": 0.0
+  },
+  "by_label": {
+    "DoS-SlowHTTPTest": 1.0,
+    "FTP-BruteForce": 0.9999656144694312,
+    "DoS-Hulk": 0.9959680129023587,
+    "DoS-GoldenEye": 0.9890203355756592,
+    "Benign": 0.0,
+    "DoS-Slowloris": 0.9356696281671603,
+    "Bot": 0.9986410405746458,
+    "SSH-Bruteforce": 0.9957882069795427,
+    "Web-attack": 0.8787878787878788
+  },
+  "test_flows": {
+    "DoS-SlowHTTPTest": 31665,
+    "FTP-BruteForce": 29082,
+    "DoS-Hulk": 14881,
+    "DoS-GoldenEye": 12933,
+    "Benign": 8103,
+    "DoS-Slowloris": 6078,
+    "Bot": 5151,
+    "SSH-Bruteforce": 1662,
+    "Web-attack": 66
+  },
+  "sha256": {
+    "live_access.joblib": "15a99237836dc4f4852cc7a318305037461cf5b96717306136774b6d0fe59df6",
+    "live_bot.joblib": "9fe43995b91a3f4e5bda508b999d22c936c2b422a7ab271057a2cedeb6844a33",
+    "live_dos.joblib": "28183ee263a0e9a1361e2e34f728f5e520db7c83b9d92c031a48c7c86b67f49a"
+  },
+  "args": {
+    "train_share": 0.7,
+    "min_accuracy": 0.9,
+    "seed": 0,
+    "max_per_label": 15000,
+    "only": [
+      "live_bot"
+    ],
+    "max_drop": 0.02,
+    "max_fa_rise": 0.0005,
+    "force": false
+  }
+}
