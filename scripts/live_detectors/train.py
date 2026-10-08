@@ -42,7 +42,7 @@ from nids.counselor import CounselorNetwork
 from nids.datasets.flow_features import CIC2018_TO_2017
 from nids.datasets.paths import PROJECT_ROOT, RESULTS_DIR
 from nids.detector.classifiers import CLASSIFIERS
-from nids.evaluation import metrics
+from nids.evaluation import mcnemar, metrics, metrics_with_intervals, wilson
 from nids.detector.training import build_detector
 
 PROCESSED = PROJECT_ROOT / "data" / "processed" / "live"
@@ -81,9 +81,10 @@ def time_split(flows: pd.DataFrame, share: float) -> tuple[pd.DataFrame, pd.Data
             pd.concat([b for _, b in parts], ignore_index=True))
 
 
-def evaluate(detectors, test: pd.DataFrame, min_accuracy: float) -> tuple[pd.DataFrame, dict]:
+def evaluate(detectors, test: pd.DataFrame, min_accuracy: float) -> tuple[pd.DataFrame, dict, np.ndarray]:
     """Share of each label's test flows flagged, per detector alone and for the whole system
-    (Benign row = false alarms), and overall metrics."""
+    (Benign row = false alarms), overall metrics (the system's with 95% intervals), and the
+    system's verdict per test flow."""
     verdicts = {}
     for d in detectors:
         d.clear_history()
@@ -100,14 +101,31 @@ def evaluate(detectors, test: pd.DataFrame, min_accuracy: float) -> tuple[pd.Dat
         for label, g in test.groupby("label")
     }).T.sort_values("flows", ascending=False)
     y = test["is_attack"].to_numpy()
-    return table, {k: metrics(y, v) for k, v in verdicts.items()}
+    summary = {k: metrics(y, v) for k, v in verdicts.items()}
+    summary[SYSTEM] = metrics_with_intervals(y, verdicts[SYSTEM])
+    return table, summary, verdicts[SYSTEM]
+
+
+def intervals(test: pd.DataFrame, verdict: np.ndarray) -> pd.DataFrame:
+    """Per label: flows, flagged, the flagged share and its 95% Wilson interval."""
+    rows = {}
+    for label, g in test.groupby("label"):
+        k, n = int(verdict[g.index].sum()), len(g)
+        low, high = wilson(k, n)
+        rows[label] = {"flows": n, "flagged": k, "rate": k / n, "low": low, "high": high}
+    return pd.DataFrame(rows).T.sort_values("flows", ascending=False)
 
 
 def show(table: pd.DataFrame, summary: dict) -> None:
     pct = lambda v: f"{v:.2%}"  # noqa: E731
     print("\nshare of test flows flagged as attack (Benign row = false alarms):")
     print(table.to_string(formatters={k: pct for k in table.columns if k != "flows"} | {"flows": "{:,.0f}".format}))
-    print(pd.DataFrame(summary).T.map(pct).to_string())
+    print(pd.DataFrame({k: {m: v[m] for m in ("accuracy", "detection_rate", "false_alarm_rate")}
+                        for k, v in summary.items()}).T.map(pct).to_string())
+    s = summary[SYSTEM]
+    print(f"system, 95% intervals: detection {s['detection_rate']:.2%} "
+          f"({s['detection_rate_low']:.2%}-{s['detection_rate_high']:.2%}), false alarms "
+          f"{s['false_alarm_rate']:.3%} ({s['false_alarm_rate_low']:.3%}-{s['false_alarm_rate_high']:.3%})")
 
 
 def gate(rates: pd.Series, baseline: dict | None, max_drop: float, max_fa_rise: float) -> list[str]:
@@ -192,10 +210,11 @@ def main():
                                         stratify="label", seed=args.seed))
         trained.append(detectors[-1])
 
-    table, summary = evaluate(detectors, test, args.min_accuracy)
+    table, summary, verdict = evaluate(detectors, test, args.min_accuracy)
     show(table, summary)
     out = RESULTS_DIR / args.results
     out.mkdir(parents=True, exist_ok=True)
+    intervals(test, verdict).to_csv(out / "intervals.csv")
     table.to_csv(out / "by_label.csv")
     (out / "summary.json").write_text(json.dumps({"metrics": summary, "args": vars(args),
                                                   "knowledge": KNOWLEDGE}, indent=2))
@@ -207,9 +226,20 @@ def main():
     baseline = None
     if installed and MANIFEST.exists():
         print("\ninstalled models on the same test flows:")
-        before, before_summary = evaluate([joblib.load(p) for p in installed], test, args.min_accuracy)
+        before, before_summary, before_verdict = evaluate([joblib.load(p) for p in installed], test, args.min_accuracy)
         show(before, before_summary)
         baseline = {"by_label": before[SYSTEM].to_dict()}
+        # is the difference real? McNemar on the same test flows, overall and per label
+        y = test["is_attack"].to_numpy()
+        tests = {"all": mcnemar(y, verdict, before_verdict)}
+        for label, g in test.groupby("label"):
+            tests[label] = mcnemar(y[g.index], verdict[g.index], before_verdict[g.index])
+        (out / "mcnemar.json").write_text(json.dumps(
+            {"a": "new", "b": "installed", "note": "b = only the new system right, c = only the installed one right",
+             "tests": tests}, indent=1))
+        t = tests["all"]
+        print(f"\nnew vs installed (McNemar): new alone right on {t['b']:,} flows, installed alone on "
+              f"{t['c']:,}; p = {t['p_value']:.3g} ({'significant' if t['p_value'] < 0.05 else 'not significant'} at 5%)")
 
     rates = table[SYSTEM]
     problems = gate(rates, baseline, args.max_drop, args.max_fa_rise)

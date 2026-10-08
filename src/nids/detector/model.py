@@ -76,14 +76,71 @@ class DetectorModel:
             profile.selected = [n for n, a in profile.accuracy.items() if a >= best - alpha - 1e-12]
         return self
 
-    def refit(self, X_extra: pd.DataFrame, y_extra) -> "DetectorModel":
-        """Rebuild the model with extra training signatures (self-learning)."""
+    def refit(self, X_extra: pd.DataFrame, y_extra, eval_share: float = 0.0) -> "DetectorModel":
+        """Rebuild the model with extra training signatures (self-learning).
+
+        ``eval_share`` of the extra signatures go to the evaluation set instead, so cluster
+        accuracies (and with them classifier selection and advice confidence) also reflect
+        the traffic the extras came from — e.g. a new network the model is adapting to."""
         X_train, y_train = self.train_data
+        X_eval, y_eval = self.eval_data
+        y_extra = np.asarray(y_extra)
+        n_eval = int(len(y_extra) * eval_share)
+        if n_eval:
+            order = np.random.default_rng(self.seed).permutation(len(y_extra))
+            to_eval, to_train = order[:n_eval], order[n_eval:]
+            X_eval = pd.concat([X_eval, X_extra.iloc[to_eval]], ignore_index=True)
+            y_eval = np.concatenate([y_eval, y_extra[to_eval]])
+            X_extra, y_extra = X_extra.iloc[to_train], y_extra[to_train]
         return self.fit(
             pd.concat([X_train, X_extra], ignore_index=True),
-            np.concatenate([y_train, np.asarray(y_extra)]),
-            *self.eval_data,
+            np.concatenate([y_train, y_extra]),
+            X_eval, y_eval,
         )
+
+    def adapt(self, X: pd.DataFrame, y, prior_weight: float = 200.0, reselect: bool = False) -> int:
+        """Re-estimate every classifier's accuracy per cluster from new labelled samples
+        (adaptive trust).
+
+        By default only the cluster's advice confidence changes (``profile.confidence``):
+        the accuracy of the classifier the cluster already relies on. With ``reselect``,
+        all accuracies are replaced and classifier selection re-run — but agreement labels
+        are the easy cases every classifier gets right, so they cannot tell good classifiers
+        from bad ones, and re-selection then lets weaker classifiers vote.
+
+        The lab estimate is the prior, worth ``prior_weight`` samples (or the cluster's
+        evaluation size, if smaller); each new sample moves it towards the accuracy seen on
+        the new traffic. A detector's advice confidence is its cluster accuracy, so this
+        also adapts how much the counselors trust it. Statistics accumulate across calls
+        and are reset by ``fit``/``refit``. Returns how many samples were used."""
+        y = np.asarray(y, dtype=bool)
+        if not len(y):
+            return 0
+        Xt = self.transform(X)
+        clusters = self.assign_clusters(Xt)
+        predictions = {name: c.predict(Xt).astype(bool) for name, c in self.classifiers.items()}
+        for k in np.unique(clusters):
+            rows = clusters == k
+            profile = self.clusters[k]
+            if not hasattr(profile, "lab_accuracy"):
+                profile.lab_accuracy, profile.new_seen = dict(profile.accuracy), 0
+                profile.new_correct = dict.fromkeys(profile.accuracy, 0)
+            profile.new_seen += int(rows.sum())
+            prior = min(prior_weight, max(profile.size, 1))
+            adapted = {}
+            for name, p in predictions.items():
+                profile.new_correct[name] += int((p[rows] == y[rows]).sum())
+                adapted[name] = ((prior * profile.lab_accuracy[name] + profile.new_correct[name])
+                                 / (prior + profile.new_seen))
+            if reselect:
+                profile.accuracy.update(adapted)
+            profile.confidence = adapted[profile.best]
+        if reselect:
+            self.reselect(self.alpha)
+            for profile in self.clusters:
+                if hasattr(profile, "confidence"):
+                    profile.confidence = profile.accuracy[profile.best]
+        return len(y)
 
     def transform(self, X: pd.DataFrame) -> np.ndarray:
         # One dtype for training and serving: K-Means rejects inputs whose dtype

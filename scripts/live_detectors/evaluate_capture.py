@@ -14,14 +14,10 @@ the "Normal" row is the false-alarm rate. Writes results/live/system_<capture>.c
 """
 
 import argparse
-import json
-import os
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-import fakeredis
 import joblib
 import numpy as np
 import pandas as pd
@@ -30,12 +26,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from build_dataset import SOURCES, flowmeter  # noqa: E402
 
+from nids.capture import snort_offline  # noqa: E402
 from nids.counselor import CounselorNetwork  # noqa: E402
 from nids.datasets.flow_features import CIC2018_TO_2017  # noqa: E402
 from nids.datasets.paths import PROJECT_ROOT, RESULTS_DIR  # noqa: E402
-from nids.services import flow_index  # noqa: E402
 from nids.services.live_capture import carries_payload  # noqa: E402
-from nids.services.snort_bridge import HOST_LEVEL_GIDS, HOST_WINDOW, snort_command  # noqa: E402
 
 MODELS = PROJECT_ROOT / "models" / "live"
 NAMES = {  # dataset label -> table row
@@ -67,26 +62,8 @@ def ml_flags(flows: pd.DataFrame, min_accuracy: float) -> np.ndarray:
 
 
 def snort_flags(capture: Path, flows: pd.DataFrame, work: Path, community: bool = True) -> tuple[np.ndarray, list[dict]]:
-    env = os.environ | {"NIDS_SNORT_COMMUNITY": "1" if community else "0"}
-    subprocess.run(snort_command(str(capture), str(work)), check=False, env=env,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    alerts_file = work / "alert_json.txt"
-    alerts = [json.loads(line) for line in alerts_file.read_text().splitlines()] if alerts_file.exists() else []
-    r = fakeredis.FakeRedis()
-    flow_index.index_flows(r, flows.rename(columns={"conn_dst_port": "dst_port"})[
-        ["record_id", "flow_start", "flow_end", "src_ip", "src_port", "dst_ip", "dst_port", "protocol"]])
-    flagged = np.zeros(len(flows), dtype=bool)
-    for a in alerts:
-        at = float(a["seconds"])
-        if a.get("gid") in HOST_LEVEL_GIDS:
-            ids = flow_index.find_host_flows(r, a["proto"], a["src_addr"], a["dst_addr"], at, HOST_WINDOW)
-        elif a.get("src_port") is not None:
-            found = flow_index.find_flow(r, a["proto"], a["src_addr"], a["src_port"], a["dst_addr"], a["dst_port"], at)
-            ids = [] if found is None else [found]
-        else:
-            ids = []
-        flagged[ids] = True
-    return flagged, alerts
+    alerts = snort_offline.run_snort(capture, work / "snort", community)
+    return snort_offline.link(flows, alerts).map(bool).to_numpy(), alerts
 
 
 def main():

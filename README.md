@@ -239,6 +239,35 @@ Data sources and layout are in [docs/datasets.md](docs/datasets.md).
 - **Model integrity.** Model files are pickles, and loading one runs code. Promotion writes
   `models/live/SHA256SUMS`, and live mode refuses to load any model that doesn't match it.
 
+## Thesis: Snort-guided adaptation to a new network
+
+AI detectors lose most of their accuracy on a network they weren't trained on, and nobody
+labels a new network's traffic. Three additions let Snort, whose rules behave the same
+everywhere, guide the detectors there:
+
+1. **Snort as a counselor** (`src/nids/counselor/snort.py`): when a detector's classifiers
+   disagree, Snort's verdict on that connection is advice, and a trusted "attack" beats a
+   "normal" (`attack_advice_wins`). Snort only advises on these conflicts; also
+   cross-checking confident "normal" verdicts copied every Snort false alarm.
+2. **Learning from agreement:** connections where Snort and the AI independently say attack,
+   or Snort is silent and every detector is sure they're normal, become labels. Each detector
+   learns those it was involved in. A gate rejects a retrain that does worse on held-out
+   agreement labels, or that forgets any attack type on the original lab's labelled data.
+3. **Adaptive trust:** each Snort rule's trust is a Beta estimate, updated from AI agreement.
+   Re-estimating the AI's own trust from agreement labels is kept only as an ablation: those
+   labels are the easy cases, so the estimates are biased upwards and hurt detection.
+
+```bash
+python scripts/live_detectors/adapt.py --source 2018 --target 2017   # and --source 2017 --target 2018
+```
+
+Every rate comes with a 95% Wilson interval, and every comparison with McNemar's test.
+In a development run on one lab, Snort as a counselor raised detection from 98.23% to
+99.57% (Slowloris 69% → 94%, website attacks 71% → 95%), and learning from agreement to
+99.83%, with no extra false alarms (p < 10⁻⁶⁰ against the deployed system). Agreement
+labels were right 100% of the time for attacks and 99.9% for normal traffic. The
+cross-network results need the CICIDS2017 captures ([docs/datasets.md](docs/datasets.md)).
+
 ## Project layout
 
 ```

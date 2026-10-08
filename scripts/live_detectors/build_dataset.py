@@ -11,6 +11,7 @@ live detectors are trained on flows computed the live way:
      packets themselves (the CSV timestamps are a 12-hour clock without AM/PM)
   3. all other traffic of the victim, plus an ordinary workstation, as benign
   4. the Python cicflowmeter on each slice; flows labelled by attacker address
+  5. Snort on each slice; the rules that fired on each flow kept in ``snort_rules``
 
 Writes data/processed/live/flows.pkl.
 
@@ -26,7 +27,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from nids.capture import pcap
+from nids.capture import pcap, snort_offline
 from nids.datasets.flow_features import python_flows_to_2017
 from nids.datasets.paths import PROJECT_ROOT
 from nids.services.live_capture import connection_columns
@@ -79,6 +80,12 @@ def spread_minutes(scanned: pd.DataFrame, src: str, budget: int, picks: int = 12
     return {row.bucket: min(60.0, 60.0 * share / row.packets) for row in picked.itertuples()}
 
 
+def with_snort(flows: pd.DataFrame, capture: Path, work: Path) -> pd.DataFrame:
+    """Add ``snort_rules``: the Snort rules ("gid:sid") that fired on each flow."""
+    alerts = snort_offline.run_snort(capture, work / f"{capture.stem}-snort")
+    return flows.assign(snort_rules=snort_offline.link(flows, alerts) if len(flows) else [])
+
+
 def flowmeter(pcap: Path, out_csv: Path) -> pd.DataFrame:
     log = out_csv.with_suffix(".log")
     with open(log, "w") as f:
@@ -111,7 +118,7 @@ def build(source: Source, attack_budget: int, benign_budget: int, work: Path) ->
         sliced = work / f"{source.capture}-attack.pcap"
         n = pcap.slice_pcap(path, sliced, is_attack)
         print(f"  attack slice: {n:,} packets → flowmeter", flush=True)
-        flows = flowmeter(sliced, work / f"{source.capture}-attack.csv")
+        flows = with_snort(flowmeter(sliced, work / f"{source.capture}-attack.csv"), sliced, work)
         pair = lambda r: next((lbl for ip, lbl in source.attackers.items() if ip in (r.src_ip, r.dst_ip)), "Benign")
         flows["label"] = [pair(r) for r in flows.itertuples()]
         frames.append(flows)
@@ -122,7 +129,7 @@ def build(source: Source, attack_budget: int, benign_budget: int, work: Path) ->
     n = pcap.slice_pcap(path, sliced, lambda p: p.src not in attackers and p.dst not in attackers,
                               max_packets=budget)
     print(f"  benign slice: {n:,} packets → flowmeter", flush=True)
-    flows = flowmeter(sliced, work / f"{source.capture}-benign.csv")
+    flows = with_snort(flowmeter(sliced, work / f"{source.capture}-benign.csv"), sliced, work)
     flows["label"] = "Benign"
     frames.append(flows)
 

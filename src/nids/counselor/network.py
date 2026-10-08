@@ -11,6 +11,21 @@ situation — a detector with limited vision of attacks it was never trained on.
 "normal" verdict is checked with the counselors, and an acceptable "attack" advice
 overrides it. A detector cannot raise a conflict about an attack class it has never
 seen, so without this such attacks are confidently missed.
+
+``attack_advice_wins`` (an extension, off by default): when acceptable advice on a conflict
+disagrees, the most trusted "attack" advice is taken over any "normal" advice. Same reasoning as the
+cross-check: a counselor that never learned an attack type is not unsure about it but
+confidently wrong, so its "normal" says little, while a trusted "attack" (a specialist that
+knows the attack, or a Snort rule) says a lot. Without it, the most confident counselor wins,
+which lets e.g. the flood detector overrule Snort on a website attack.
+
+``advisors`` (an extension) are counselors that only give advice and classify nothing
+themselves, e.g. Snort (``SnortCounselor``): anything with a ``name`` and an
+``advise_many(timestamps, window)`` returning (found, prediction, confidence) arrays.
+Advisors are asked about conflicts only — they break ties when a detector is unsure. Asking
+them to cross-check every confident "normal" verdict too would turn the system into "AI or
+Snort", inheriting every Snort false alarm (27% of normal flows in the 2018 lab, mostly
+policy rules). ``attack_advice_wins`` likewise applies to conflicts only.
 """
 
 import numpy as np
@@ -27,6 +42,9 @@ class CounselorNetwork:
         window: float = 2.0,
         cross_check_normal: bool = False,
         suppress_fallback: bool = False,
+        advisors=(),
+        learn_from_advice: bool = True,
+        attack_advice_wins: bool = False,
     ):
         """window: look-back in timestamp units; the paper uses 2 seconds.
 
@@ -41,17 +59,32 @@ class CounselorNetwork:
         self.window = window
         self.cross_check_normal = cross_check_normal
         self.suppress_fallback = suppress_fallback
+        self.advisors = list(advisors)
+        self.learn_from_advice = learn_from_advice  # the paper's steps 8.A-C
+        self.attack_advice_wins = attack_advice_wins
 
-    def _best_advice(self, requester: Detector, timestamps: np.ndarray):
-        """Best acceptable advice per timestamp: (found, prediction, counselor name) arrays."""
-        counselors = [d for d in self.detectors if d is not requester]
+    def _best_advice(self, requester: Detector, timestamps: np.ndarray, conflict: np.ndarray | None = None):
+        """Best acceptable advice per timestamp: (found, prediction, counselor name) arrays.
+        ``conflict`` marks the timestamps that are conflicts: only those also hear the
+        advisors and use attack_advice_wins (default: all)."""
         n = len(timestamps)
+        conflict = np.ones(n, dtype=bool) if conflict is None else np.asarray(conflict, dtype=bool)
+        counselors = [(d, False) for d in self.detectors if d is not requester] + [(a, True) for a in self.advisors]
         best_confidence = np.full(n, -np.inf)
         prediction = np.zeros(n, dtype=bool)
         counselor = np.full(n, None, dtype=object)
-        for other in counselors:
+        for other, advisor in counselors:
             found, pred, confidence = other.advise_many(timestamps, self.window)
-            better = found & (confidence >= self.min_accuracy) & (confidence > best_confidence)
+            acceptable = found & (confidence >= self.min_accuracy)
+            if advisor:
+                acceptable &= conflict
+            more_confident = confidence > best_confidence
+            if self.attack_advice_wins:
+                # on conflicts an attack advice beats any normal advice; within a kind, the most confident
+                attack_first = (pred & ~prediction) | ((pred == prediction) & more_confident)
+                better = acceptable & np.where(conflict, attack_first, more_confident)
+            else:
+                better = acceptable & more_confident
             best_confidence[better] = confidence[better]
             prediction[better] = pred[better]
             counselor[better] = other.name
@@ -69,7 +102,7 @@ class CounselorNetwork:
         ask = conflict | (self.cross_check_normal & ~results["prediction"].to_numpy(dtype=bool))
         rows = np.flatnonzero(ask)
         found, prediction, counselor = self._best_advice(
-            requester, results["timestamp"].to_numpy()[rows])
+            requester, results["timestamp"].to_numpy()[rows], conflict[rows])
 
         # Conflicts take any acceptable advice; cross-checked normals only flip to attack.
         use = found & (conflict[rows] | prediction)
@@ -84,7 +117,8 @@ class CounselorNetwork:
             guess = (results["resolution"] == "fallback").to_numpy() & results["prediction"].to_numpy(dtype=bool)
             results.iloc[np.flatnonzero(guess), results.columns.get_loc("prediction")] = False
 
-        requester.learn(samples.iloc[rows], prediction)
+        if self.learn_from_advice:
+            requester.learn(samples.iloc[rows], prediction)
         return results
 
     def run(self, samples: pd.DataFrame, timestamps) -> dict[str, pd.DataFrame]:

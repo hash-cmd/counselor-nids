@@ -18,7 +18,7 @@ web = [
     "django-cors-headers", "channels", "daphne", "python-decouple", "whitenoise",
 ]
 # retraining and testing the live detectors (scripts/live_detectors/)
-train = ["fakeredis", "nids[live]"]
+train = ["nids[live]"]
 
 [project.scripts]
 nids = "nids.cli:main"

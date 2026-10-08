@@ -52,7 +52,8 @@ class Detector:
             ).astype(bool)
             prediction[rows] = votes[:, profile.selected.index(profile.best)]
             conflict[rows] = (votes != votes[:, :1]).any(axis=1)
-            confidence[rows] = profile.accuracy[profile.best]
+            # adaptive trust (DetectorModel.adapt) may have re-estimated it on new traffic
+            confidence[rows] = getattr(profile, "confidence", profile.accuracy[profile.best])
 
         results = pd.DataFrame({
             "timestamp": np.asarray(timestamps, dtype=float),
@@ -117,12 +118,18 @@ class Detector:
         if len(samples):
             self.new_signatures.append((samples[self.features], np.asarray(labels, dtype=bool)))
 
-    def retrain(self) -> int:
-        """Rebuild the model with the learned signatures; returns how many were added."""
+    def retrain(self, eval_share: float = 0.0) -> int:
+        """Rebuild the model with the learned signatures; returns how many were added.
+        ``eval_share``: see ``DetectorModel.refit``."""
         if not self.new_signatures:
             return 0
         X = pd.concat([x for x, _ in self.new_signatures], ignore_index=True)
         y = np.concatenate([y for _, y in self.new_signatures])
-        self.model.refit(X, y)
+        self.model.refit(X, y, eval_share)
         self.new_signatures.clear()
         return len(y)
+
+    def adapt(self, samples: pd.DataFrame, labels, prior_weight: float = 200.0, reselect: bool = False) -> int:
+        """Adaptive trust: re-estimate cluster accuracies on labelled samples of the
+        traffic being watched (see ``DetectorModel.adapt``)."""
+        return self.model.adapt(samples[self.features], labels, prior_weight, reselect)

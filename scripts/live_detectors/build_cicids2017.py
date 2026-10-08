@@ -13,7 +13,9 @@ flows. Unlike the 2018 per-host captures, each day is one capture of the whole n
      172.16.0.1 (NAT); the botnet's C2 server keeps its public address. Windows are
      padded by PAD seconds; attacker-victim traffic outside every window is ambiguous and
      dropped, as are Heartbleed (a handful of flows) and infiltration (looks normal).
-  4. connection-only flows are dropped, as live mode drops them before the ML
+  4. Snort runs on the whole day; the rules that fired on each flow are kept in
+     ``snort_rules`` (linked before empty flows are dropped, so scans link as live)
+  5. connection-only flows are dropped, as live mode drops them before the ML
 
 Writes data/processed/live/cicids2017-<day>.pkl, one per day (kept, so a rerun skips
 finished days). ``--check`` prints the attacker's busiest minutes next to the schedule,
@@ -34,7 +36,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from nids.capture import pcap
+from nids.capture import pcap, snort_offline
 from nids.datasets.paths import PROJECT_ROOT
 from nids.services.live_capture import carries_payload
 
@@ -151,6 +153,10 @@ def build(capture: str, workers: int, parts: int) -> pd.DataFrame:
                                    range(parts)))
     flows = pd.concat([f for f in frames if not f.empty], ignore_index=True)
     total = len(flows)
+    with tempfile.TemporaryDirectory(dir=WORK, prefix=f"{capture}-snort-") as work:
+        alerts = snort_offline.run_snort(PCAPS / f"{capture}.pcap", Path(work))
+    flows["snort_rules"] = snort_offline.link(flows, alerts)
+    print(f"  Snort: {len(alerts):,} alerts on {flows['snort_rules'].map(bool).sum():,} flows", flush=True)
     flows = flows[carries_payload(flows)].reset_index(drop=True)
     flows["label"] = label(flows, date, windows)
     flows = flows[flows["label"] != "Drop"].reset_index(drop=True)
