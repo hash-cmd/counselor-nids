@@ -30,6 +30,10 @@ rule checker. Ctrl+C stops everything, and logs are in `logs/`.
 
 ## How it works
 
+![System design](docs/system-design.png)
+
+What happens to each connection, step by step: [docs/logic-flow.png](docs/logic-flow.png).
+
 ```
                 ┌─> flow meter ─> Observer ─> AI detectors ──┐
 network (wlan0) ┤                                            ├─> correlator ─> Redis ─> API ─> dashboard
@@ -241,7 +245,7 @@ nids/
 ├── pyproject.toml          the nids Python package and its dependencies
 ├── deploy/                 systemd units and their installer (install-systemd.sh)
 ├── docker-compose.yml      dashboard in containers (redis, api, web); docker/ holds the images
-├── docs/                   deployment.md, live-testing.md, datasets.md
+├── docs/                   deployment.md, live-testing.md, datasets.md; system-design and logic-flow diagrams
 ├── models/live/            the AI detectors (shipped), manifest.json, SHA256SUMS
 ├── snort/                  Snort 3 configuration and the project's rules
 ├── src/nids/               the core library and the `nids` command
