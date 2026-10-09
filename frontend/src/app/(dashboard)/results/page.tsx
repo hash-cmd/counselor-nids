@@ -95,7 +95,11 @@ export default function ResultsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api<Results>("/results/").then(setResults).catch((e) => setError(e.message));
+    // an older API may not send every section yet: show what there is
+    api<Results>("/results/")
+      .then((r) => setResults({ ...r, by_label: r.by_label ?? {}, system_tests: r.system_tests ?? {},
+                                cross_host: r.cross_host ?? null, adaptation: r.adaptation ?? [] }))
+      .catch((e) => setError(e.message));
   }, []);
 
   if (error) return <p className="text-sm text-critical">Could not load results: {error}</p>;

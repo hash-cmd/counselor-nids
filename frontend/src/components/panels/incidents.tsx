@@ -41,7 +41,7 @@ function what(incident: Incident): string {
 function clueText(incident: Incident): string {
   if (incident.snort?.rules.length) return incident.snort.rules.join(" ");
   if (incident.label) return incident.label;
-  if (incident.ml?.origins.length) return incident.ml.origins.map(detectorClue).join(" ");
+  if (incident.ml?.origins?.length) return incident.ml.origins.map(detectorClue).join(" ");
   return "unknown";
 }
 
@@ -293,7 +293,7 @@ export function IncidentsTable({
 
   return (
     <div className={detail ? "grid gap-4 xl:grid-cols-[1fr_24rem]" : ""}>
-      <Card title="Alerts" subtitle={subtitle} actions={actions}>
+      <Card title="Alerts" subtitle={subtitle} actions={actions} className="min-w-0">
         {incidents.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted">{empty}</p>
         ) : (
