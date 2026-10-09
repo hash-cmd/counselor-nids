@@ -120,7 +120,7 @@ export default function ResultsPage() {
             <LabelChart
               tag="Fig · Test"
               title="Recorded real attacks they had never seen"
-              subtitle="Share of each kind of traffic flagged as an attack. High is good, except for normal traffic (false alarms)."
+              subtitle="Share of each kind of traffic flagged as an attack. High is good, except for normal traffic (false alarms). Alone, each detector only catches its own specialty, so its overall score is low; the team is what runs."
               table={results.by_label.live}
             />
           </div>

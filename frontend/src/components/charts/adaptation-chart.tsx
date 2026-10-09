@@ -58,7 +58,12 @@ function Curve({ exp }: { exp: Adaptation }) {
         />
       ) : (
         <>
-          <Legend items={drawn.map((d) => ({ name: configName(d.key), color: d.color, shape: "line" as const }))} />
+          <Legend items={drawn.map((d) => {
+            // a line drawn exactly under another one is otherwise invisible: say so
+            const same = drawn.find((o) => o.key !== d.key && DRAWN.indexOf(o) > DRAWN.indexOf(d) &&
+              data.every((row) => (row as Record<string, number | null>)[o.key] === (row as Record<string, number | null>)[d.key]));
+            return { name: configName(d.key) + (same ? ` (same as “${configName(same.key)}”)` : ""), color: d.color, shape: "line" as const };
+          })} />
           <div className="h-64">
             <ResponsiveContainer>
               <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>

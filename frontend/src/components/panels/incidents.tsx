@@ -5,7 +5,7 @@ import { useState } from "react";
 import { clock, count } from "@/lib/format";
 import { useFeedback, type Verdict } from "@/lib/feedback";
 import { type Incident, type IncidentSource, SOURCE_LABELS } from "@/lib/incidents";
-import { ATTACK_INFO, attackCategory, attackName, detectorClue, detectorName, resolutionLabel, RESOLUTIONS, ruleName } from "@/lib/plain";
+import { ATTACK_INFO, attackCategory, attackName, bySpecificity, detectorClue, detectorName, resolutionLabel, RESOLUTIONS, ruleName } from "@/lib/plain";
 
 import { severityScore, tierOf } from "@/lib/severity";
 
@@ -31,7 +31,7 @@ export function SourceTag({ source }: { source: Incident["source"] }) {
 function what(incident: Incident): string {
   if (incident.snort) return incident.snort.rules.map(ruleName).join(" · ");
   if (incident.label) return attackName(incident.label);
-  const origins = incident.ml?.origins ?? [];
+  const origins = bySpecificity(incident.ml?.origins ?? []);
   if (!origins.length) return "Behaves like an attack";
   return `${ATTACK_INFO[attackCategory(detectorClue(origins[0]))].title} — ${origins.map(detectorName).join(", ")}`;
 }
@@ -41,7 +41,7 @@ function what(incident: Incident): string {
 function clueText(incident: Incident): string {
   if (incident.snort?.rules.length) return incident.snort.rules.join(" ");
   if (incident.label) return incident.label;
-  if (incident.ml?.origins?.length) return incident.ml.origins.map(detectorClue).join(" ");
+  if (incident.ml?.origins?.length) return detectorClue(bySpecificity(incident.ml.origins)[0]);
   return "unknown";
 }
 

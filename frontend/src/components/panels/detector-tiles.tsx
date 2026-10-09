@@ -42,7 +42,8 @@ export function DetectorTiles({ detectors }: { detectors: Record<string, Detecto
             <p className="mb-4 mt-0.5 text-xs text-ink-2">{knows ? `Specialist in ${knows}.` : name}</p>
             <div className="grid grid-cols-2 gap-4">
               <Stat label="Connections checked" value={count(s.samples)} />
-              <Stat label="Attacks flagged" value={count(s.flagged)} />
+              <Stat label="Attacks flagged" value={count(s.flagged)}
+                    hint={s.cross_checked ? `${count(s.cross_checked)} only after another detector recognised them` : undefined} />
             </div>
             <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-line pt-3 text-xs sm:grid-cols-4">
               {TEAMWORK.map(([label, key, hint]) => (

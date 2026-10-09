@@ -4,7 +4,9 @@ export const percent = (value: number | null | undefined, digits = 2) =>
 export const count = (value: number | null | undefined) =>
   value == null ? "—" : value.toLocaleString("en-US");
 
-export const perSecond = (value: number) => `${Math.round(value).toLocaleString("en-US")}/s`;
+// one decimal for small rates, so axis ticks like 0.5 and 1.5 don't round into duplicates
+export const perSecond = (value: number) =>
+  `${value < 10 && !Number.isInteger(value) ? value.toFixed(1) : Math.round(value).toLocaleString("en-US")}/s`;
 
 export const clock = (unixSeconds: number) =>
   new Date(unixSeconds * 1000).toLocaleTimeString("en-GB", { hour12: false });

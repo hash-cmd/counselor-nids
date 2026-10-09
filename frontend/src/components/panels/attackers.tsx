@@ -98,12 +98,14 @@ function AttackerCard({ attacker, reputation }: { attacker: Attacker; reputation
   );
 }
 
-export function AttackersPanel({ incidents, limit, title = "Attackers", footer, className }: {
+export function AttackersPanel({ incidents, limit, title = "Attackers", footer, className, basis }: {
   incidents: Incident[];
   limit?: number;
   title?: string;
   footer?: React.ReactNode;
   className?: string;
+  /** what the grouping covers, e.g. "From the latest 500 of 15,774 suspicious connections." */
+  basis?: string;
 }) {
   const all = groupByAttacker(incidents);
   const attackers = limit ? all.slice(0, limit) : all;
@@ -113,7 +115,7 @@ export function AttackersPanel({ incidents, limit, title = "Attackers", footer, 
       className={className}
       title={title}
       tag="Movers"
-      subtitle="Each suspicious source, ranked by severity, with the story of what it did. Click one to expand."
+      subtitle={`Each suspicious source, ranked by severity, with the story of what it did. Click one to expand.${basis ? ` ${basis}` : ""}`}
     >
       {attackers.length === 0 ? (
         <p className="flex flex-1 items-center justify-center py-10 text-center text-sm text-muted">

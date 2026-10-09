@@ -28,6 +28,13 @@ export const detectorName = (name: string) => DETECTORS[name]?.name ?? name;
 /** The kind of attack an alarm from this detector points to (fed to attackCategory). */
 const DETECTOR_CLUES: Record<string, string> = { live_dos: "dos", live_access: "brute force", live_bot: "botnet" };
 export const detectorClue = (name: string) => DETECTOR_CLUES[name] ?? "";
+
+/** When several detectors raised the same alarm, the most specific describes it: the botnet
+ *  detector flags only botnet traffic, the flood detector only floods, while the break-in
+ *  detector also flags some floods and botnet traffic. */
+const SPECIFICITY = ["live_bot", "live_dos", "live_access"];
+export const bySpecificity = (origins: string[]) =>
+  [...origins].sort((a, b) => (SPECIFICITY.indexOf(a) + 1 || 99) - (SPECIFICITY.indexOf(b) + 1 || 99));
 export const detectorKnows = (name: string) => DETECTORS[name]?.knows ?? null;
 
 /** Dataset labels (e.g. "DoS Hulk", "FTP-Patator") as "Plain name (original)". */

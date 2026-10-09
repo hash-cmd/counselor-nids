@@ -18,6 +18,7 @@ const TABS = [
 ] as const;
 
 const PAGE = 100;
+const ATTACKER_WINDOW = 500;
 
 export default function AlertsPage() {
   const live = useLive();
@@ -27,6 +28,8 @@ export default function AlertsPage() {
   const [limit, setLimit] = useState(PAGE);
   const runId = live.replay.state === "idle" ? "live" : live.replay.id;
   const { data, error } = useIncidents(source, query, limit, live.activity === "running", runId);
+  // attackers are grouped from the latest alarms (the API returns at most 500 at a time)
+  const latest = useIncidents("all", "", ATTACKER_WINDOW, live.activity === "running", runId);
   const detectors = Object.keys(live.detectors).sort();
 
   const changeSource = (f: Filter) => {
@@ -101,7 +104,14 @@ export default function AlertsPage() {
           }
         />
       )}
-      {tab === "attackers" && <AttackersPanel incidents={data?.incidents ?? []} />}
+      {tab === "attackers" && (
+        <AttackersPanel
+          incidents={latest.data?.incidents ?? []}
+          basis={latest.data && latest.data.incidents.length < latest.data.total
+            ? `From the latest ${count(latest.data.incidents.length)} of ${count(latest.data.total)} suspicious connections.`
+            : undefined}
+        />
+      )}
       {tab === "ml" && <MlAlertsTable alerts={live.alerts} detectors={detectors} />}
       {tab === "snort" && <SnortAlertsTable alerts={live.snortAlerts} />}
     </>

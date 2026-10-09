@@ -162,6 +162,13 @@ def _in(t: float, windows) -> bool:
     return any(start <= t <= end for start, end in windows)
 
 
+def _origin(alert: dict) -> str:
+    """The detector that recognised the attack: for a double-checked alarm, the counselor."""
+    if alert.get("resolution") == "cross_check" and alert.get("counselor"):
+        return alert["counselor"]
+    return alert["detector"]
+
+
 def _day(t: float) -> str:
     return datetime.fromtimestamp(t).strftime("%Y-%m-%d")
 
@@ -217,7 +224,10 @@ def report(entries: list[dict], exclude=(), top: int = 10, marked: dict | None =
             "flagged_flows": len(flagged),
             "per_1000_flows": per_1k(len(flagged)),
             "per_hour": round(len(flagged) / (watched / 3600), 2) if watched else None,
-            "by_detector": dict(Counter(e["detector"] for e in ml).most_common()),
+            # each flagged connection once per detector that recognised the attack (a
+            # double-checked alarm belongs to the counselor, not the detector that asked)
+            "by_detector": dict(Counter(origin for _, _, origin in {
+                (e.get("run", ""), e["record_id"], _origin(e)) for e in ml}).most_common()),
             "top_connections": dict(Counter(pair(e) for e in ml).most_common(top)),
         },
         "snort": {
@@ -227,6 +237,7 @@ def report(entries: list[dict], exclude=(), top: int = 10, marked: dict | None =
         },
         "excluded_test_alerts": {"ml": len(ml_tests), "snort": len(snort_tests)},
         "marked": {"real_attacks": len({(e.get("run", ""), e["record_id"]) for e in real}),
-                   "confirmed_false_alarms": sum(v == "normal" for v in marked.values())},
+                   "confirmed_false_alarms": sum(marked.get(key) == "normal" for key in
+                                                 {(e.get("run", ""), int(e["record_id"])) for e in ml})},
         "daily": [{"day": day, **v, "hours": round(v["hours"], 2)} for day, v in sorted(daily.items())],
     }

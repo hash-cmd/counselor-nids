@@ -50,7 +50,10 @@ function Verdict({ checked, suspicious, running, incidents }: {
       <p className="text-base font-semibold" style={{ color: worst ? TIER_META[worst].color : "var(--critical-text)" }}>
         {count(suspicious)} suspicious connection{suspicious === 1 ? "" : "s"} out of {count(checked)} checked.
       </p>
-      <span className="flex flex-wrap gap-1.5">
+      <span className="flex flex-wrap items-center gap-1.5">
+        {incidents.length < suspicious && (
+          <span className="text-xs text-muted">latest {count(incidents.length)}:</span>
+        )}
         {TIER_ORDER.filter((t) => counts[t] > 0).map((t) => (
           <span key={t} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
                 style={{ background: `color-mix(in srgb, ${TIER_META[t].color} 16%, transparent)`, color: TIER_META[t].color }}>

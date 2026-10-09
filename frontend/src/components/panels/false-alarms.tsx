@@ -214,8 +214,9 @@ export function FalseAlarms() {
 
           {r.marked && (r.marked.real_attacks > 0 || r.marked.confirmed_false_alarms > 0) && (
             <p className="text-xs text-muted">
-              Your verdicts: {count(r.marked.confirmed_false_alarms)} confirmed false alarms;{" "}
-              {count(r.marked.real_attacks)} marked real attacks, not counted as false alarms.
+              Your verdicts: {count(r.marked.confirmed_false_alarms)} confirmed false alarm
+              {r.marked.confirmed_false_alarms === 1 ? "" : "s"}; {count(r.marked.real_attacks)} marked real attack
+              {r.marked.real_attacks === 1 ? "" : "s"}, not counted as false alarms.
             </p>
           )}
           {(r.excluded_test_alerts.ml > 0 || r.excluded_test_alerts.snort > 0) && (

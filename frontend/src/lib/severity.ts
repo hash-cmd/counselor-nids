@@ -1,7 +1,7 @@
 /** Severity scoring and attacker correlation — turns a flat alert list into ranked,
  *  prioritised incidents and "attack stories" grouped by who is doing it. */
 
-import { attackCategory, type Category, ATTACK_INFO, detectorClue } from "./plain";
+import { attackCategory, type Category, ATTACK_INFO, bySpecificity, detectorClue } from "./plain";
 import { isLocalIp } from "./blocking";
 import type { Incident } from "./incidents";
 
@@ -18,7 +18,7 @@ const CATEGORY_WEIGHT: Record<Category, number> = {
 function clueText(incident: Incident): string {
   if (incident.snort?.rules.length) return incident.snort.rules.join(" ");
   if (incident.label) return incident.label;
-  if (incident.ml?.origins?.length) return incident.ml.origins.map(detectorClue).join(" ");
+  if (incident.ml?.origins?.length) return detectorClue(bySpecificity(incident.ml.origins)[0]);
   return "unknown";
 }
 

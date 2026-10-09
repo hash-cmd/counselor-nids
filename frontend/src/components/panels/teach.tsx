@@ -30,7 +30,7 @@ export function TeachPanel() {
     >
       <div className="mb-4 flex flex-wrap gap-x-8 gap-y-2 text-sm text-ink-2">
         <span><span className="figure font-semibold text-ink">{count(summary.normal)}</span> marked not an attack</span>
-        <span><span className="figure font-semibold text-ink">{count(summary.attack)}</span> marked real attacks</span>
+        <span><span className="figure font-semibold text-ink">{count(summary.attack)}</span> marked real attack{summary.attack === 1 ? "" : "s"}</span>
         <span><span className="figure font-semibold text-ink">{count(summary.learnable)}</span> the AI can learn from</span>
       </div>
       {error && <p className="mb-3 text-sm text-critical">{error}</p>}
