@@ -7,8 +7,17 @@ traffic — the number the lab results cannot tell you.
 ## 1. Find your interface
 
 ```bash
-ip link            # e.g. wlan0 (Wi-Fi) or eth0 (cable)
+ip link            # Linux: e.g. wlan0 (Wi-Fi) or eth0 (cable)
+ifconfig           # macOS:  e.g. en0 (Wi-Fi)
 ```
+
+`start.sh` runs on Linux and macOS. On macOS, install the tools with Homebrew first
+(`brew install snort redis node`), then use your `en0`-style interface name below.
+
+On **Windows** there is no way to live-capture the machine's own Wi-Fi with this stack (the
+same virtual-network boundary that stops Docker and WSL2 from seeing the host NIC). Run the
+dashboard and the recording tests under WSL2 or Docker, and do live monitoring from a Linux or
+macOS machine.
 
 ## 2. Start live mode
 

@@ -24,10 +24,18 @@ WEB_PORT="${WEB_PORT:-3000}"
 export NIDS_REDIS_URL="${NIDS_REDIS_URL:-redis://localhost:6379/0}"
 PROD=0
 mkdir -p "$LOGS"
+
+# Works on Linux, macOS and WSL. Commands that differ between them go through the small
+# helpers below; everything else is plain POSIX/bash.
+OS="$(uname -s)"
+file_size() {  # size of a file in bytes (GNU vs BSD/macOS stat)
+  if [[ "$OS" == Darwin || "$OS" == *BSD ]]; then stat -f %z "$1"; else stat -c %s "$1"; fi
+}
+
 # keep logs bounded: a service log past 20 MB is moved to <name>.log.1 (one old copy kept).
 # logs/journal/ is data, not a log: `nids journal` prunes it (one year by default).
 for log in "$LOGS"/*.log; do
-  [[ -f "$log" ]] && (( $(stat -c %s "$log") > 20000000 )) && mv -f "$log" "$log.1"
+  [[ -f "$log" ]] && (( $(file_size "$log") > 20000000 )) && mv -f "$log" "$log.1"
 done
 
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
@@ -41,11 +49,45 @@ need_setup() {
   [[ -d frontend/node_modules ]] || die "frontend packages missing — run: ./start.sh setup"
 }
 
-port_free() { ! ss -ltn "( sport = :$1 )" 2>/dev/null | grep -q ":$1"; }
+port_free() {  # is TCP port $1 free? (ss on Linux, lsof on macOS/BSD)
+  if command -v ss >/dev/null 2>&1; then
+    ! ss -ltn "( sport = :$1 )" 2>/dev/null | grep -q ":$1"
+  else
+    ! lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+  fi
+}
+
+iface_exists() {  # does network interface $1 exist? (ip on Linux, ifconfig on macOS/BSD)
+  if command -v ip >/dev/null 2>&1; then ip link show "$1" >/dev/null 2>&1
+  else ifconfig "$1" >/dev/null 2>&1; fi
+}
+
+iface_hint() { command -v ip >/dev/null 2>&1 && echo "see: ip link" || echo "see: ifconfig"; }
+
+verify_models() {  # check models/live against SHA256SUMS (coreutils vs macOS shasum)
+  if command -v sha256sum >/dev/null 2>&1; then (cd models/live && sha256sum --quiet -c SHA256SUMS)
+  else (cd models/live && shasum -a 256 -c SHA256SUMS >/dev/null); fi
+}
+
+abspath() { "$PY" -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$1"; }
+
+pkg_hint() {  # how to install package $1 on this OS
+  case "$OS" in
+    Darwin) echo "brew install $1" ;;
+    *)      echo "sudo apt install $1   (or your distro's package manager)" ;;
+  esac
+}
+
+snort_hint() {  # Snort 3 is a brew package on macOS; Debian/Ubuntu have no v3 package
+  case "$OS" in
+    Darwin) echo "brew install snort" ;;
+    *)      echo "build Snort 3 from source, or run the containers instead: docker compose up" ;;
+  esac
+}
 
 ensure_redis() {
   if redis-cli -u "$NIDS_REDIS_URL" ping >/dev/null 2>&1; then return; fi
-  command -v redis-server >/dev/null || die "Redis is not running and redis-server is not installed"
+  command -v redis-server >/dev/null || die "Redis is not running and redis-server is not installed — $(pkg_hint redis)"
   say "starting Redis"
   redis-server --port 6379 --daemonize yes --dir "$LOGS" --save "" --logfile "$LOGS/redis.log"
   for _ in $(seq 1 20); do redis-cli -u "$NIDS_REDIS_URL" ping >/dev/null 2>&1 && return; sleep 0.25; done
@@ -74,7 +116,7 @@ cleanup() {
   echo
   say "stopping"
   # root-owned capture processes need sudo to be signalled
-  for pid in "${SUDO_PIDS[@]}"; do sudo kill -TERM "$pid" 2>/dev/null || true; done
+  for pid in ${SUDO_PIDS[@]+"${SUDO_PIDS[@]}"}; do sudo kill -TERM "$pid" 2>/dev/null || true; done
   # everything else, children included (next dev starts its own server process):
   # the whole process group, which a terminal gives to this script alone
   kill -TERM 0 2>/dev/null || true
@@ -89,7 +131,7 @@ run_bg() {  # run_bg <log name> <command...>   (a job that may finish on its own
 
 run_service() {  # like run_bg, but watched: if it dies, everything stops
   run_bg "$@"
-  SERVICES+=("${PIDS[-1]}")
+  SERVICES+=("${PIDS[$((${#PIDS[@]} - 1))]}")  # last PID (bash 3.2 has no negative indices)
 }
 
 run_bg_sudo() {
@@ -147,7 +189,7 @@ prepare_prod() {
 watch() {  # keep running until Ctrl+C or a service dies
   say "dashboard: http://localhost:$WEB_PORT   (logs in logs/, Ctrl+C to stop)"
   while true; do
-    for pid in "${SERVICES[@]}"; do
+    for pid in ${SERVICES[@]+"${SERVICES[@]}"}; do
       if ! kill -0 "$pid" 2>/dev/null; then
         # Ctrl+C reaches the services too; give its handler a moment to run first
         sleep 0.5 & wait $! || true
@@ -167,6 +209,11 @@ on_signals() {
 # ---------------------------------------------------------------- commands
 
 cmd_setup() {
+  # System tools the project needs. This script installs the Python and Node packages,
+  # but not the system programs themselves — those come from your OS package manager.
+  command -v python3 >/dev/null || die "Python 3 is not installed — $(pkg_hint python3)"
+  command -v npm >/dev/null || die "Node.js (npm) is not installed — $(pkg_hint node)"
+
   say "Python environment"
   [[ -x "$PY" ]] || python3 -m venv .venv
   "$PY" -m pip install -q --upgrade pip
@@ -194,7 +241,7 @@ cmd_setup() {
       | tar xz -C snort/rules/community --strip-components=1 \
       || warn "could not download the community rules — Snort will use snort/rules/nids.rules only"
   }
-  command -v snort >/dev/null || warn "Snort is not installed — live mode will run the ML only"
+  command -v snort >/dev/null || warn "Snort 3 is not installed — $(snort_hint) (without it, live mode runs the ML only)"
   say "done — now run: ./start.sh"
 }
 
@@ -217,16 +264,16 @@ cmd_live() {
   local capture=(run_bg)
   if [[ "$target" == *.pcap || "$target" == *.pcapng ]]; then
     [[ -f "$target" ]] || die "no such capture: $target"
-    target="$(realpath "$target")"
+    target="$(abspath "$target")"
   else
-    ip link show "$target" >/dev/null 2>&1 || die "no network interface '$target' (see: ip link)"
+    iface_exists "$target" || die "no network interface '$target' ($(iface_hint))"
     say "capturing on $target needs root — sudo will ask once"
     sudo -v
     capture=(run_bg_sudo)
   fi
 
   # model files are pickles, so loading one runs code: only load the promoted, checksummed set
-  [[ -f models/live/SHA256SUMS ]] && (cd models/live && sha256sum --quiet -c SHA256SUMS) \
+  [[ -f models/live/SHA256SUMS ]] && verify_models \
     || die "models/live/ does not match its SHA256SUMS — restore it (git checkout models/live) or retrain"
   local models=(models/live/*.joblib)
   local snort=1
