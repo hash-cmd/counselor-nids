@@ -22,7 +22,19 @@ alert.
 ```
 
 You need Python 3.11+, Node, Redis (started for you if it's installed) and Snort 3 for the
-rule checker. Ctrl+C stops everything, and logs are in `logs/`.
+rule checker. Ctrl+C stops everything, and logs are in `logs/`. `start.sh` runs on **Linux and
+macOS** (on macOS: `brew install snort redis node`); on **Windows**, use Docker or WSL2 for the
+dashboard and tests — live capture of the machine's own Wi-Fi needs a Linux or macOS host.
+
+**On any OS (Linux, macOS, Windows), or to avoid installing those yourself**, run it in
+containers instead — one command, with Snort included:
+
+```bash
+docker compose up --build     # dashboard on http://localhost:3000 (login admin / admin)
+```
+
+The first build compiles Snort and takes 10-20 minutes; see [Dashboard](#dashboard) below.
+Live capture of a real network card still needs a Linux host (`./start.sh live <interface>`).
 
 - To run it permanently, as services that start at boot and restart on failure, see
   [docs/deployment.md](docs/deployment.md).
@@ -226,14 +238,20 @@ To serve the dashboard beyond localhost, put an HTTPS proxy in front and set
 `AUTH_COOKIE_SECURE=1`, `DJANGO_ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS`
 ([docs/deployment.md](docs/deployment.md)).
 
-**Docker** runs only the dashboard, for test replays. Snort isn't in the image, and
-monitoring a network needs the host:
+**Docker** gives everyone the identical setup on Linux, macOS or Windows — one command, with
+Snort 3 compiled into the image:
 
 ```bash
-echo "DJANGO_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(50))')" > .env
-docker-compose run --rm api python manage.py createsuperuser
-docker-compose up                     # dashboard on http://localhost:3000
+docker compose up --build             # first run builds the images (compiling Snort: 10-20 min)
+# -> dashboard on http://localhost:3000, login admin / admin (change it)
 ```
+
+The secret key and the login are created automatically on first run. This runs the whole
+dashboard and the recording tests **with Snort as a counselor** — open *Test with recordings*
+to play the bundled attacks through the AI and Snort together. Live capture of a real network
+card is not done in Docker (a container can't reliably reach the host's Wi-Fi on macOS or
+Windows); for live monitoring, use `./start.sh live <interface>` or the systemd services on a
+Linux host ([docs/deployment.md](docs/deployment.md)).
 
 ## Retraining the detectors
 

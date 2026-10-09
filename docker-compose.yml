@@ -1,43 +1,44 @@
-# Counselor NIDS dashboard in containers.
+# Counselor NIDS in containers — the same on Linux, macOS and Windows.
 #
-#   docker-compose run --rm api python manage.py createsuperuser    # once: dashboard login
-#   docker-compose up                                               # dashboard on http://localhost:3000
+#   docker compose up --build        # first run: builds the images, then serves
+#   docker compose up                # afterwards
+#   -> dashboard on http://localhost:3000   (login: admin / admin — change it)
 #
-# The dashboard tests the live detectors (models/live/) on recordings in data/pcap/; the API
-# runs the services itself. Snort is not in the image (Debian has no package), so tests run
-# with the ML only. To monitor a network, run on the host instead: deploy/install-systemd.sh.
-
-x-nids: &nids
-  build:
-    context: .
-    dockerfile: docker/api.Dockerfile
-  image: counselor-nids
-  environment:
-    NIDS_REDIS_URL: redis://redis:6379/0
-  volumes:
-    - ./models:/app/models
-    - ./data:/app/data
-    - ./results:/app/results
-  depends_on:
-    - redis
+# This runs the whole dashboard and the recording tests, with Snort as a counselor
+# (Snort 3 is compiled into the API image). Open "Test with recordings" to play the
+# bundled attacks through the AI *and* Snort together.
+#
+# The first build compiles Snort from source and can take 10-20 minutes. After that
+# it is cached.
+#
+# Live capture of a real network card is NOT done here: a container cannot reliably
+# reach the host's Wi-Fi/Ethernet on macOS or Windows. For live monitoring, run on a
+# Linux host with ./start.sh live <interface> or deploy/install-systemd.sh
+# (see docs/deployment.md). Docker gives everyone the identical setup and the full
+# recording-based tests, including Snort.
 
 services:
   redis:
     image: redis:7-alpine
 
-  # --- web stack (default) ---
   api:
-    <<: *nids
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    image: counselor-nids
     working_dir: /app/backend
-    entrypoint: []
-    command: ["sh", "-c", "python manage.py migrate --noinput && python manage.py collectstatic --noinput -v 0 && daphne -b 0.0.0.0 -p 8000 config.asgi:application"]
+    entrypoint: ["/usr/local/bin/entrypoint.api.sh"]
     environment:
       NIDS_REDIS_URL: redis://redis:6379/0
       NIDS_ROOT: /app
       DJANGO_DB_PATH: /db/db.sqlite3
       DJANGO_DEBUG: "false"
-      # put DJANGO_SECRET_KEY=<random 50 chars> in a .env file next to this one
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY in .env (python3 -c "import secrets; print(secrets.token_urlsafe(50))")}
+      # A random secret is generated and kept in the db volume on first run.
+      # Set DJANGO_SECRET_KEY in a .env file to pin your own.
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
+      # The dashboard login, created on first run. Change the password after signing in.
+      DJANGO_SUPERUSER_USERNAME: ${NIDS_ADMIN_USER:-admin}
+      DJANGO_SUPERUSER_PASSWORD: ${NIDS_ADMIN_PASSWORD:-admin}
       # plain http on localhost; set to "true" behind an HTTPS proxy
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,api
@@ -49,6 +50,8 @@ services:
       - api-db:/db
     ports:
       - "8000:8000"
+    depends_on:
+      - redis
 
   web:
     build:
