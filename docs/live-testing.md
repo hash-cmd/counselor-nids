@@ -60,7 +60,60 @@ detectors just read the file. (Build it once with `scripts/live_detectors/make_d
 
 Only test attack tools against machines you own and are allowed to test.
 
-## 6. Measure the false-alarm rate over several days (the real test)
+## 6. Check detection by attacking your own machine
+
+To see the detectors fire on a live attack — not a recording — generate the kinds of traffic
+they were trained on and aim it at a machine you own. The one rule that matters: **the attack
+packets have to cross the interface you're capturing on**. Traffic you send to `127.0.0.1`, or
+to your own address from the same machine, goes over the loopback interface, not `wlan0`, so
+the flow meter never sees it. Two ways to arrange that:
+
+- **A second device** (phone, another computer, a VM) on the same network, running the attack
+  tools against this machine's address. Capture stays on `wlan0`. Most realistic.
+- **Capture on loopback** instead (`./start.sh live lo`) and attack `127.0.0.1` from this same
+  machine. Self-contained, no second device needed. Flow features and the rules are the same;
+  only the addresses differ.
+
+Before you start, open the dashboard and choose **I'm starting an attack test** on the
+Overview, and type what you are running. That marks the window so the alarms it raises are not
+counted as false alarms (step 4). Note the start time for `--exclude` (step 7) too.
+
+Find this machine's address with `ip -4 addr show wlan0`. If it needs a web service to attack
+(the website and slow-HTTP tests do), run a throwaway one and point the tools at it:
+
+```bash
+python3 -m http.server 8080 --bind 0.0.0.0     # a target on http://<this-machine>:8080
+```
+
+Then, **from the attacking device**, against `<target>` (this machine's address):
+
+```bash
+sudo apt install -y nmap hping3 slowhttptest    # once
+
+# Port scan           -> Break-in detector + Snort portscan rule
+sudo nmap -sS -p- <target>
+
+# Website attacks      -> Break-in detector + Snort SQL-injection / XSS rules
+curl "http://<target>:8080/?id=1%27%20UNION%20SELECT%20username,password%20FROM%20users--"
+curl "http://<target>:8080/?q=<script>alert(1)</script>"
+
+# SYN flood (bounded)  -> Flood (DoS) detector + Snort SYN-flood rule
+sudo timeout 20 hping3 -S -p 8080 -i u500 <target>
+
+# Slow HTTP / Slowloris -> Flood (DoS) detector
+slowhttptest -c 400 -H -i 10 -r 50 -t GET -u http://<target>:8080 -x 24 -p 3
+```
+
+Use `hping3 -i u500` (about 2,000 packets a second), not `--flood`, so it doesn't saturate
+your own Wi-Fi. A flow is only scored once its connection ends or times out, so wait up to a
+minute or two after each test, then watch the **Alerts** page and the **Flood** / **Break-in**
+tiles on the AI detectors page. `.venv/bin/nids journal-report` lists what fired, by detector
+and by Snort rule, and whether the two agreed.
+
+On a phone-hotspot network, "client isolation" can block one device from reaching another; if
+nothing arrives, use the loopback option above instead.
+
+## 7. Measure the false-alarm rate over several days (the real test)
 
 The lab numbers and a few minutes of live capture can't tell you how noisy the system is on
 *your* traffic over time. To find out, leave it running and read the numbers:
