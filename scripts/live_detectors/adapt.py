@@ -11,6 +11,9 @@ nobody labels it. What each configuration may use to adapt:
                     how often the AI agrees with it
     +trust          adaptive trust: rules, and each detector's per-cluster advice confidence
     +trust-reselect as +trust, but detectors also re-select their classifiers per cluster
+    +self           ablation: self-training with NO Snort — pseudo-labels from the AI's own
+                    confidence alone. Isolates whether the gain comes from Snort or just
+                    self-training (if +self does not improve while +learn/full do, it's Snort)
     +learn          self-learning from agreement: detectors retrain on agreement labels
                     behind a gate (see below)
     full            Snort counselor + rule trust + self-learning (the proposed system)
@@ -44,7 +47,9 @@ verdicts are compared with McNemar's test (same test flows) against the deployed
 
 Writes results/adaptation/<source>_to_<target>/: curve.csv (per config and step: detection,
 false alarms with intervals, per attack type), mcnemar.csv, pseudo_labels.csv (how many
-agreement labels and how many were right, with intervals), rule_trust.json, summary.json.
+agreement labels and how many were right, with intervals), rule_trust.json, summary.json,
+and blind_spot.csv (per attack type: Snort's coverage on the test set and each config's change
+in detection start-to-end — a drop on a low-coverage attack would be a learned blind spot).
 
     python scripts/live_detectors/adapt.py --source 2018 --target 2017
 """
@@ -72,15 +77,19 @@ from nids.detector.training import build_detector  # noqa: E402
 from nids.evaluation import mcnemar, metrics_with_intervals, wilson  # noqa: E402
 
 FEATURES = list(CIC2018_TO_2017.values())
-CONFIGS = {  # name: (snort counselor, adaptive trust: None | "rules" | "confidence" | "reselect", self-learning)
-    "ai": (False, None, False),
-    "+snort": (True, None, False),
-    "+rules": (True, "rules", False),
-    "+trust": (True, "confidence", False),
-    "+trust-reselect": (True, "reselect", False),
-    "+learn": (True, None, True),
-    "full": (True, "rules", True),
-    "full+trust": (True, "confidence", True),
+CONFIGS = {  # name: (snort counselor, adaptive trust: None|"rules"|"confidence"|"reselect", self-learning, label source)
+    "ai": (False, None, False, "agreement"),
+    "+snort": (True, None, False, "agreement"),
+    "+rules": (True, "rules", False, "agreement"),
+    "+trust": (True, "confidence", False, "agreement"),
+    "+trust-reselect": (True, "reselect", False, "agreement"),
+    # ablation: ordinary self-training with no Snort at all — pseudo-labels from the AI's own
+    # confidence (attack if a detector is sure, normal if all detectors are unanimously sure).
+    # If this does not help while +learn/full do, the gain comes from Snort, not self-training.
+    "+self": (False, None, True, "ai"),
+    "+learn": (True, None, True, "agreement"),
+    "full": (True, "rules", True, "agreement"),
+    "full+trust": (True, "confidence", True, "agreement"),
 }
 
 
@@ -176,7 +185,7 @@ def forgetting(old, new, source_check: pd.DataFrame, args) -> list[str]:
 
 
 def run_config(name, base, stream_chunks, test, source_check, args):
-    snort, adaptive, learn = CONFIGS[name]
+    snort, adaptive, learn, label_src = CONFIGS[name]
     detectors = [copy.deepcopy(d) for d in base]
     trust = RuleTrust(prior=0.9, prior_weight=args.rule_prior)
     pools = {d.name: ([], []) for d in base}  # agreement labels each detector may learn from
@@ -196,6 +205,8 @@ def run_config(name, base, stream_chunks, test, source_check, args):
     for step, chunk in enumerate(stream_chunks, 1):
         finals, _ = judge(detectors, chunk, snort, trust, args.min_accuracy)
         p_attack, p_normal, own_attack, sure_normal = agreement_labels(chunk, finals)
+        if label_src == "ai":  # self-training ablation: label from the AI alone, no Snort
+            p_attack, p_normal = own_attack, sure_normal
         truth = chunk["is_attack"].to_numpy()
         a_right, n_right = int((p_attack & truth).sum()), int((p_normal & ~truth).sum())
         a_low, a_high = wilson(a_right, int(p_attack.sum()))
@@ -350,6 +361,22 @@ def main():
     (out / "rule_trust.json").write_text(json.dumps(trusts, indent=1))
     final = {c["config"]: c for c in curves if c["step"] == max(x["step"] for x in curves if x["config"] == c["config"])}
     (out / "summary.json").write_text(json.dumps({"args": vars(args), "baselines": baselines, "final": final}, indent=1))
+
+    # blind-spot analysis: does adaptation help on the attacks Snort sees and hurt on the ones
+    # it cannot (botnets, slow DoS)? Per attack type: Snort's coverage on the test set, and each
+    # config's change in detection from start to end. A drop on a low-coverage attack is the risk.
+    start = {c["config"]: c for c in curves if c["step"] == 0}
+    blind = []
+    for lbl, g in test.groupby("label"):
+        if lbl == "Benign":
+            continue
+        row = {"attack": lbl, "test_flows": len(g), "snort_coverage": float(g["snort_rules"].map(bool).mean())}
+        for cfg in args.configs:
+            s, f = start[cfg].get(f"label:{lbl}"), final[cfg].get(f"label:{lbl}")
+            if s is not None and f is not None:
+                row[f"{cfg}_start"], row[f"{cfg}_end"], row[f"{cfg}_change"] = s, f, f - s
+        blind.append(row)
+    pd.DataFrame(blind).sort_values("snort_coverage").to_csv(out / "blind_spot.csv", index=False)
 
     pct = lambda v: f"{v:.2%}"  # noqa: E731
     table = pd.DataFrame({**baselines, **{f"{k} (start)": next(c for c in curves if c["config"] == k and c["step"] == 0)
