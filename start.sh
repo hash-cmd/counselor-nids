@@ -89,7 +89,8 @@ ensure_redis() {
   if redis-cli -u "$NIDS_REDIS_URL" ping >/dev/null 2>&1; then return; fi
   command -v redis-server >/dev/null || die "Redis is not running and redis-server is not installed — $(pkg_hint redis)"
   say "starting Redis"
-  redis-server --port 6379 --daemonize yes --dir "$LOGS" --save "" --logfile "$LOGS/redis.log"
+  # bind to loopback only: the NIDS's Redis holds live data and must not be reachable from the LAN
+  redis-server --port 6379 --bind 127.0.0.1 --daemonize yes --dir "$LOGS" --save "" --logfile "$LOGS/redis.log"
   for _ in $(seq 1 20); do redis-cli -u "$NIDS_REDIS_URL" ping >/dev/null 2>&1 && return; sleep 0.25; done
   die "Redis did not start (see logs/redis.log)"
 }

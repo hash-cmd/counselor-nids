@@ -111,13 +111,21 @@ def pcap_header(path: Path) -> bytes:
 
 
 def parse(time: float, data: bytes) -> Packet:
-    """Addresses and ports of an Ethernet/IPv4 packet (VLAN tags are not handled)."""
-    if len(data) < 34 or data[12:14] != b"\x08\x00":
+    """Addresses and ports of an Ethernet/IPv4 packet (802.1Q/QinQ VLAN tags are skipped)."""
+    if len(data) < 14:
         return Packet(time, None, None, None, None, None, False)
-    ihl = (data[14] & 0x0F) * 4
-    proto = data[23]
-    src, dst = _ip(data[26:30]), _ip(data[30:34])
-    l4 = data[14 + ihl:]
+    off = 12  # EtherType field; advance past any VLAN tags
+    while data[off:off + 2] in (b"\x81\x00", b"\x88\xa8") and len(data) >= off + 6:
+        off += 4
+    if data[off:off + 2] != b"\x08\x00":  # not IPv4
+        return Packet(time, None, None, None, None, None, False)
+    ip = off + 2  # start of the IP header
+    if len(data) < ip + 20:
+        return Packet(time, None, None, None, None, None, False)
+    ihl = (data[ip] & 0x0F) * 4
+    proto = data[ip + 9]
+    src, dst = _ip(data[ip + 12:ip + 16]), _ip(data[ip + 16:ip + 20])
+    l4 = data[ip + ihl:]
     if proto in (6, 17) and len(l4) >= 4:
         sport, dport = struct.unpack("!HH", l4[:4])
         syn_only = proto == 6 and len(l4) >= 14 and bool(l4[13] & 0x02) and not l4[13] & 0x10

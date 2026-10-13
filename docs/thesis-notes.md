@@ -114,10 +114,11 @@ the forgetting gate, and is **measured** by the `blind_spot.csv` analysis (per-a
 coverage vs the change in detection after adaptation) and the `+self` ablation (self-training
 with no Snort). Report those results as the empirical answer to this concern.
 
-**Engineering scope.** The capture path handles IPv4 Ethernet without VLAN tags; models are
-Python pickles (integrity-checked by SHA-256 before loading, but a safer serialization format
-is future work); and the services bind to localhost (expose only behind an authenticated proxy —
-e.g. Redis must not be reachable on the LAN).
+**Engineering scope.** The capture path handles IPv4 Ethernet, including 802.1Q/QinQ VLAN tags;
+IPv6 is not yet parsed (future work). Models are Python pickles (integrity-checked by SHA-256
+before loading, but a safer serialization format is future work). The Redis instance the system
+launches binds to loopback only; to serve the dashboard beyond localhost, place it behind an
+authenticated HTTPS proxy.
 
 ---
 
