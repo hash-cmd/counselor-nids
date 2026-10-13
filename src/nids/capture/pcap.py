@@ -1,4 +1,4 @@
-"""Fast, dependency-free tools for classic pcap files (not pcapng).
+"""Fast, dependency-free tools for classic pcap and pcapng files.
 
 Used to build training data for the live detectors from the CSE-CIC-IDS2018 raw captures:
 find who attacked a victim and when (``scan``), and cut out the packets to analyse
@@ -15,6 +15,7 @@ from pathlib import Path
 import pandas as pd
 
 MAGIC_US, MAGIC_NS = 0xA1B2C3D4, 0xA1B23C4D
+PCAPNG_MAGIC = 0x0A0D0D0A  # pcapng Section Header Block type (reads the same either endianness)
 
 
 @dataclass(frozen=True)
@@ -33,14 +34,22 @@ def _ip(b: bytes) -> str:
 
 
 def iter_raw(path: Path) -> Iterator[tuple[float, bytes, bytes]]:
-    """(time, 16-byte record header, packet bytes) for every packet."""
+    """(time, 16-byte classic-pcap record header, packet bytes) for every packet.
+
+    Reads both classic pcap and pcapng (the CICIDS2017 captures are pcapng); the record
+    header is always synthesised in classic little-endian microsecond form.
+    """
     with open(path, "rb") as f:
-        header = f.read(24)
-        if len(header) < 24:
+        head = f.read(4)
+        if len(head) < 4:
             return
-        magic = struct.unpack("<I", header[:4])[0]
+        magic = struct.unpack("<I", head)[0]
+        if magic == PCAPNG_MAGIC:
+            yield from _iter_pcapng(f)
+            return
         if magic not in (MAGIC_US, MAGIC_NS):
-            raise ValueError(f"{path}: not a little-endian classic pcap (pcapng is not supported)")
+            raise ValueError(f"{path}: not a little-endian classic pcap or pcapng")
+        f.read(20)  # rest of the 24-byte global header
         scale = 1e9 if magic == MAGIC_NS else 1e6
         while True:
             record = f.read(16)
@@ -48,6 +57,52 @@ def iter_raw(path: Path) -> Iterator[tuple[float, bytes, bytes]]:
                 return
             sec, frac, incl, _ = struct.unpack("<IIII", record)
             yield sec + frac / scale, record, f.read(incl)
+
+
+def _iter_pcapng(f) -> Iterator[tuple[float, bytes, bytes]]:
+    """Packets from a pcapng file: Enhanced Packet Blocks, honouring each interface's
+    timestamp resolution. ``f`` may be anywhere — we re-read from the start."""
+    f.seek(0)
+    if f.read(4) != b"\x0a\x0d\x0d\x0a":
+        return
+    raw_len = f.read(4)
+    bom = f.read(4)
+    endian = "<" if bom == b"\x4d\x3c\x2b\x1a" else ">" if bom == b"\x1a\x2b\x3c\x4d" else None
+    if endian is None:
+        raise ValueError("pcapng: unknown byte-order magic")
+    f.seek(struct.unpack(endian + "I", raw_len)[0])  # past the Section Header Block
+    tsresol: list[int] = []  # ticks per second, per interface id
+    while True:
+        hdr = f.read(8)
+        if len(hdr) < 8:
+            return
+        btype, blen = struct.unpack(endian + "II", hdr)
+        if blen < 12:
+            return
+        body = f.read(blen - 12)
+        f.read(4)  # trailing block length
+        if btype == 1:  # Interface Description Block
+            div = 1_000_000
+            opts, i = body[8:], 0  # skip linktype, reserved, snaplen
+            while i + 4 <= len(opts):
+                code, olen = struct.unpack(endian + "HH", opts[i:i + 4])
+                i += 4
+                val = opts[i:i + olen]
+                i += (olen + 3) & ~3
+                if code == 0:
+                    break
+                if code == 9 and olen >= 1:  # if_tsresol
+                    v = val[0]
+                    div = (1 << (v & 0x7F)) if v & 0x80 else 10 ** v
+            tsresol.append(div)
+        elif btype == 6 and len(body) >= 20:  # Enhanced Packet Block
+            iface, ts_hi, ts_lo, cap_len, _orig = struct.unpack(endian + "IIIII", body[:20])
+            div = tsresol[iface] if iface < len(tsresol) else 1_000_000
+            ts = ((ts_hi << 32) | ts_lo) / div
+            data = body[20:20 + cap_len]
+            sec = int(ts)
+            rec = struct.pack("<IIII", sec, int(round((ts - sec) * 1e6)), cap_len, _orig)
+            yield ts, rec, data
 
 
 def pcap_header(path: Path) -> bytes:
