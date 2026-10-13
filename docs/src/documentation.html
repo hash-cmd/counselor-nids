@@ -1,0 +1,468 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Counselor NIDS — Documentation</title>
+<link rel="stylesheet" href="style.css"></head>
+<body>
+
+<section class="cover">
+  <div class="kicker">Project Documentation</div>
+  <h1>Counselor NIDS</h1>
+  <div class="sub">A network intrusion detection system in which machine-learning detectors that advise each other
+    and the Snort rule engine watch the same live traffic, and in which Snort can guide the detectors on a network
+    they were never trained on.</div>
+  <div class="meta">Final-year thesis project · October 2026<br>Source code: github.com/hash-cmd/counselor-nids</div>
+</section>
+
+<section class="toc">
+  <h2 style="border:none">Contents</h2>
+  <ol>
+    <li>Summary</li>
+    <li>The problem and the thesis objectives</li>
+    <li>System design</li>
+    <li>The AI detectors and the counselors network</li>
+    <li>Snort alongside the AI</li>
+    <li>What happens to each connection</li>
+    <li>Training the detectors</li>
+    <li>Results</li>
+    <li>The thesis extension: Snort-guided adaptation</li>
+    <li>The dashboard and the API</li>
+    <li>Deployment, operations and security</li>
+    <li>Limitations</li>
+    <li>Project layout and how to run it</li>
+    <li>References</li>
+  </ol>
+</section>
+
+<h2>1. Summary</h2>
+<p>Counselor NIDS watches the traffic on a network interface and raises an alarm when a connection looks like an
+attack. It is built to solve a practical problem: machine-learning detectors that work in the lab usually fail once
+installed on a real organisation's network, and this system lets them <b>adapt to that network by themselves</b>,
+using a signature engine the organisation already runs. Two independent checks judge every connection:</p>
+<ul>
+  <li><b>Three machine-learning detectors</b>, each a specialist in one family of attacks: floods (DoS), break-ins
+    (password guessing and website attacks) and botnets. When a detector is unsure, it asks the others for advice.
+    This is the counselors network of Quincozes et al. (2019).</li>
+  <li><b>Snort 3</b>, a widely used signature engine that recognises known attack patterns inside the traffic.</li>
+</ul>
+<p>Every Snort alert is linked to the connection it belongs to and compared with the AI's verdict on that connection,
+so each incident is reported as <b>Confirmed</b> (both agree), <b>Disputed</b> (Snort only) or <b>AI only</b>. A web
+dashboard shows the incidents, who is attacking, how the detectors reached their decisions, how many false alarms the
+system raises on the network over days, and whether every part of the system is running.</p>
+<p>On real attack traffic it never trained on, the system catches 99-100% of most attack types, including floods,
+password guessing and botnet traffic, with almost no false alarms (Section 8). The thesis extension (Section 9) adds
+Snort as a counselor, self-learning from agreement between Snort and the AI, and adaptive trust, so the detectors can
+adapt to a network they were never trained on without anyone labelling its traffic.</p>
+
+<h2>2. The problem and the thesis objectives</h2>
+<p><b>The real-world problem: the deployment gap.</b> Machine-learning intrusion detectors score almost perfectly on
+the dataset they were trained on, but lose most of that accuracy on a different network. Trained on CIC-IDS2017 and
+tested on CSE-CIC-IDS2018, published classifiers fall to about chance accuracy (Cantone et al., 2024) — a macro-F1
+near 0.12. Every real deployment is a "different network", so in practice an organisation's new detector either misses
+real attacks or buries its security team in false alarms. This is the main reason AI-based detection is not trusted in
+the field.</p>
+<div class="box"><span class="label">The problem in practice</span>
+<p class="scenario">A small company installs an ML-based IDS. In the vendor demo it caught 99% of attacks. On the
+company's own network it drowns its two-person security team in false alarms and misses a real intrusion. The company
+has no labelled data from its network and no ML specialists. Today their only realistic choice is to turn the ML off
+and trust Snort alone.</p></div>
+<p>Two things make this hard to fix in the field, and both shape the design:</p>
+<ul>
+  <li><b>Nobody can label a live network's traffic.</b> Supervised retraining needs labelled examples of that
+    network's own normal and attack traffic, which almost no organisation has.</li>
+  <li><b>Most organisations have no ML expertise</b> to retrain or tune a detector even if they could.</li>
+</ul>
+<p>Almost every organisation already runs a signature engine (Snort), whose rules behave the same on every network.
+This project uses that existing, network-independent tool as a built-in <b>teacher</b>, so the detectors adapt to the
+organisation's own network on their own — no labelling, no ML expertise, no vendor.</p>
+<div class="box good"><span class="label">General objective</span>
+<p>To design, implement and evaluate a counselor-based network intrusion detection system in which a signature-based
+IDS (Snort) guides machine-learning detectors to adapt to a network they were never trained on, without labelled
+traffic from that network — so that the detector can be deployed on a new organisation's network and become accurate
+there automatically.</p></div>
+<table>
+  <tr><th style="width:26%">Specific objective</th><th>The real-world challenge it addresses</th></tr>
+  <tr><td><b>1. Snort as a counselor</b></td><td>In the counselors network, detectors only ask other AI detectors, who
+    can share the same blind spots on a new network. Snort's signatures behave the same on any network, so they give
+    independent advice — cutting the false alarms and missed attacks that overwhelm a small team.</td></tr>
+  <tr><td><b>2. Learning from agreement</b></td><td>There are no labels on the new network. Connections where Snort and
+    the AI independently agree serve as labels for free, so the detector recovers the accuracy lost to the deployment
+    gap, and a safety gate blocks retraining that hurts or makes the detectors forget what they knew.</td></tr>
+  <tr><td><b>3. Adaptive trust</b></td><td>Each counselor's trust is measured once, in the lab. It is re-estimated on
+    the new network from how often the others agree with it — so rules that misfire on <i>this</i> network are
+    down-weighted — for every Snort rule, and (tested as an ablation) for the AI detectors themselves.</td></tr>
+  <tr><td><b>4. Cross-network evaluation</b></td><td>The mechanisms are evaluated by training on one lab
+    (CSE-CIC-IDS2018) and deploying on another (CICIDS2017), in both directions, against each baseline — the evidence
+    that adaptation to a genuinely unseen network is real, not the end in itself.</td></tr>
+  <tr><td><b>5. Zero operator effort, run live</b></td><td>The operator labels nothing and needs no ML expertise: the
+    system adapts itself and only asks for the occasional verdict. Research detectors rarely run on live traffic; this
+    one does, and the practical obstacles found along the way are documented.</td></tr>
+</table>
+
+<h2 class="pb">3. System design</h2>
+<figure><img src="../system-design.png">
+<figcaption>Figure 1. System design: two lanes judge the same packets; Redis carries the messages between services;
+the magenta row is the thesis addition.</figcaption></figure>
+<table>
+  <tr><th style="width:18%">Service</th><th style="width:22%">Command</th><th>Role</th></tr>
+  <tr><td>Traffic capture (Extractor)</td><td><code>nids extract --live IFACE</code></td><td>Captures packets and turns
+    them into connection records (flows) with the Python cicflowmeter. Flows that carry no data go to Snort only.
+    Survives the interface going down and resumes on its own.</td></tr>
+  <tr><td>Observer</td><td><code>nids observe</code></td><td>Routes each batch of flows to every detector subscribed to
+    that traffic source.</td></tr>
+  <tr><td>Detector (×3)</td><td><code>nids detect MODEL</code></td><td>Classifies flows, asks the other detectors (and,
+    with <code>--snort-counselor</code>, Snort) for advice, answers their requests, and publishes alerts.</td></tr>
+  <tr><td>Snort bridge</td><td><code>nids snort --interface IFACE</code></td><td>Runs Snort on the same interface, links
+    each alert to its connection and asks the detectors for their verdict on it; makes Snort's advice available to
+    unsure detectors and adapts each rule's trust.</td></tr>
+  <tr><td>Alert journal</td><td><code>nids journal</code></td><td>Keeps every alert on disk (one file per day) to
+    measure false alarms over days.</td></tr>
+  <tr><td>Health</td><td><code>nids health</code></td><td>Every service sends a heartbeat; this lists them and exits
+    with an error if any part has stopped.</td></tr>
+  <tr><td>API and dashboard</td><td>Django (Daphne), Next.js</td><td>REST and WebSocket API and the web dashboard.</td></tr>
+</table>
+<div class="box tech"><span class="label">Technical note</span><p>All services communicate through Redis streams:
+<code>nids:unknown</code> (new flows), <code>nids:inbox:&lt;detector&gt;</code>, advice request and reply lists,
+<code>nids:alerts</code> and <code>nids:snort:alerts</code>, a flow index (sorted sets keyed by connection and by host
+pair), and a <code>nids:health</code> hash of heartbeats. Because each part is a separate process, any one can crash and
+restart without stopping the others.</p></div>
+
+<h2>4. The AI detectors and the counselors network</h2>
+<h3>How one detector decides (from the paper)</h3>
+<ol>
+  <li><b>Training (Algorithm 1).</b> Five classifiers are trained: naive Bayes, three kinds of decision tree (J48-like,
+    REPTree-like, RandomTree-like) and a random forest. The evaluation data is grouped into clusters with K-Means. For
+    every cluster, the most accurate classifier, and any within 0.1% of it, is kept.</li>
+  <li><b>Detection (Algorithm 2).</b> A new connection is placed in its nearest cluster, and that cluster's selected
+    classifiers vote. If they agree, that is the verdict. If they disagree, there is a conflict.</li>
+  <li><b>Counselors.</b> On a conflict, the detector asks the other detectors (its counselors) for their verdict on the
+    same connection. It takes the advice of the most confident counselor, if that counselor's accuracy is at least 90%.</li>
+</ol>
+<h3>Extensions made in this project</h3>
+<ul>
+  <li><b>Cross-check.</b> A detector cannot raise a conflict about an attack family it never learned; it is just
+    confidently wrong. So every "normal" verdict is also checked with the counselors, and a confident "attack" advice
+    overrides it.</li>
+  <li><b>Unresolved conflicts count as normal.</b> When the classifiers disagree and no counselor can help, the paper
+    falls back on the best classifier's guess. On live traffic those guesses caused most false alarms while accounting
+    for almost no real detections, so they are treated as normal.</li>
+  <li><b>Connection-only flows skip the AI.</b> Port scans and failed connections exchange no data. The detectors never
+    learned them and only produced guesses (one scan caused ~50,000 false alarms), so they are left to Snort.</li>
+</ul>
+<table>
+  <tr><th>Detector</th><th>Model file</th><th>Learned</th></tr>
+  <tr><td>Flood detector</td><td><code>models/live/live_dos.joblib</code></td><td>DoS GoldenEye, Hulk, Slowloris,
+    SlowHTTPTest (and DDoS once the 2017 data is added)</td></tr>
+  <tr><td>Break-in detector</td><td><code>models/live/live_access.joblib</code></td><td>FTP and SSH password guessing,
+    website attacks</td></tr>
+  <tr><td>Botnet detector</td><td><code>models/live/live_bot.joblib</code></td><td>Ares-infected hosts calling their
+    command-and-control server</td></tr>
+</table>
+
+<h2 class="pb">5. Snort alongside the AI</h2>
+<p>Snort 3 runs on the same interface with the project's 42 rules (<code>snort/rules/nids.rules</code>) and the ~4,000
+Snort 3 community rules. Each alert is linked to its connection: the same two addresses and ports, the same protocol,
+and a time inside the connection's start-to-end window. A port-scan alert stands for many probes, so it is linked to
+every connection between the two hosts within ±30 seconds. The detectors are then asked for their verdict on that
+connection, using the same advice request they use with each other.</p>
+<table>
+  <tr><th style="width:18%">Agreement</th><th>Meaning</th></tr>
+  <tr><td>Confirmed</td><td>Snort and the AI both say attack: very likely real.</td></tr>
+  <tr><td>Disputed</td><td>Snort says attack, the AI says normal: a possible Snort false alarm, or an attack the AI
+    never learned (for example SQL injection, which looks like ordinary web traffic to the AI).</td></tr>
+  <tr><td>AI only</td><td>The AI flagged a connection Snort had no alert for: typically floods and botnet traffic.</td></tr>
+</table>
+<h3>Rules and tuning</h3>
+<ul>
+  <li><b>Website attacks:</b> SQL injection (UNION SELECT; a quote followed by an AND/OR comparison; ORDER BY probing;
+    <code>information_schema</code>), cross-site scripting (<code>&lt;script</code>, event handlers,
+    <code>javascript:</code>) in the URL or a form, and website login brute force (20 password posts from one source in
+    60 s).</li>
+  <li><b>FTP and SSH brute force</b> over a wide 120 s window, so slow guessing paced to slip under a short-window
+    threshold is still caught. SYN and HTTP floods are covered by rate thresholds, port scans by Snort's scan
+    inspector.</li>
+  <li><b>Checksums are not checked.</b> Network cards fill checksums in themselves (offloading), so a machine's own
+    outgoing packets look broken to Snort, which used to drop them. Until this was fixed, Snort raised no website-attack
+    alert at all on the 2018 website-attack capture.</li>
+  <li><b>Quieted rules:</b> protocol-anomaly alerts are off, and informational community rules (pings, ICMP errors,
+    1-minute DNS TTLs, UPnP discovery) are suppressed. They fired ~3,800 times on a normal workstation.</li>
+</ul>
+
+<h2 class="pb">6. What happens to each connection</h2>
+<figure><img src="../logic-flow.png">
+<figcaption>Figure 2. The decision path of one connection through the AI (left) and Snort (right), and the thesis
+learning loop (bottom).</figcaption></figure>
+
+<h2>7. Training the detectors</h2>
+<div class="box warn"><span class="label">Key finding</span><p>Detectors trained on the published dataset CSVs caught
+0% of password-guessing attacks measured the live way. The CSVs were made with the Java CICFlowMeter; live capture uses
+the Python cicflowmeter, and the two differ in 71 of 154 feature medians (packet lengths with or without headers, flag
+counting, where flows are split). So the detectors are trained on the datasets' <b>raw packet recordings</b>, measured
+by the same flow meter as live capture. This also means the known labelling errors in the CICIDS2017 CSVs (Engelen et
+al., 2021; Lanvin et al., 2023) do not reach training: flows are labelled from the packets and the published schedule,
+not the CSVs.</p></div>
+<ol>
+  <li><b>Fetch:</b> single hosts' captures from the CSE-CIC-IDS2018 archive (about 1.3 GB, using HTTP range requests,
+    out of 40-60 GB archives).</li>
+  <li><b>Label:</b> the attack windows are found in the packets themselves, and each flow is labelled by its
+    attacker-victim pair. The dataset's CSV timestamps can't be used: they're a 12-hour clock without AM/PM.</li>
+  <li><b>Measure:</b> the Python flow meter, reading recordings by their own clock (Section 12 explains the bug this
+    fixed). Snort also runs on every slice, and the rules that fired are kept with each flow.</li>
+  <li><b>Split by time:</b> within every attack type and capture, the earliest 80% of flows train and the latest 20%
+    test, so test flows come from later in the attack than anything learned.</li>
+  <li><b>Promotion gate:</b> the installed detectors are tested on the same test flows. New ones replace them only if
+    false alarms don't rise and no attack type drops by more than 2 points. Model files are pickles, which run code when
+    loaded, so the installed set is listed with SHA-256 checksums that live mode verifies before loading.</li>
+</ol>
+
+<h2 class="pb">8. Results</h2>
+<h3>Test split: the latest 20% of every attack (CSE-CIC-IDS2018)</h3>
+<table>
+  <tr><th>Traffic</th><th class="n">Test flows</th><th class="n">Detected by the system</th></tr>
+  <tr><td>DoS SlowHTTPTest</td><td class="n">21,110</td><td class="n">100.00%</td></tr>
+  <tr><td>DoS Hulk</td><td class="n">5,440</td><td class="n">99.94%</td></tr>
+  <tr><td>FTP brute force</td><td class="n">4,416</td><td class="n">100.00%</td></tr>
+  <tr><td>Botnet</td><td class="n">3,432</td><td class="n">99.83%</td></tr>
+  <tr><td>DoS GoldenEye</td><td class="n">3,405</td><td class="n">99.88%</td></tr>
+  <tr><td>DoS Slowloris</td><td class="n">2,166</td><td class="n">84.53%</td></tr>
+  <tr><td>SSH brute force</td><td class="n">1,015</td><td class="n">99.01%</td></tr>
+  <tr><td>Website attacks</td><td class="n">42</td><td class="n">92.86%</td></tr>
+  <tr><td>Normal traffic (false alarms)</td><td class="n">5,192</td><td class="n">0.04% (2 flows)</td></tr>
+  <tr class="total"><td>All attacks</td><td class="n"></td><td class="n">99.12%</td></tr>
+</table>
+<h3>Whole system on a held-out recording</h3>
+<p><code>real-attacks-2018.pcap</code> holds the final minutes of every attack, which the detectors never trained on,
+plus normal office traffic. It runs through the flow meter, the detectors, Snort with the project's rules, and the
+alert linking.</p>
+<table>
+  <tr><th>Traffic</th><th class="n">Flows</th><th class="n">AI</th><th class="n">Snort</th><th class="n">Either</th></tr>
+  <tr><td>DoS GoldenEye</td><td class="n">1,822</td><td class="n">99.1%</td><td class="n">4.9%</td><td class="n">99.1%</td></tr>
+  <tr><td>DoS Hulk</td><td class="n">2,861</td><td class="n">99.9%</td><td class="n">48.2%</td><td class="n">99.9%</td></tr>
+  <tr><td>DoS SlowHTTPTest</td><td class="n">4,450</td><td class="n">100.0%</td><td class="n">99.8%</td><td class="n">100.0%</td></tr>
+  <tr><td>DoS Slowloris</td><td class="n">760</td><td class="n">34.7%</td><td class="n">0.0%</td><td class="n">34.7%</td></tr>
+  <tr><td>FTP brute force</td><td class="n">5,040</td><td class="n">100.0%</td><td class="n">99.8%</td><td class="n">100.0%</td></tr>
+  <tr><td>SSH brute force</td><td class="n">359</td><td class="n">98.3%</td><td class="n">88.9%</td><td class="n">98.9%</td></tr>
+  <tr><td>Website attacks</td><td class="n">4</td><td class="n">4 of 4</td><td class="n">4 of 4</td><td class="n">4 of 4</td></tr>
+  <tr><td>Botnet</td><td class="n">540</td><td class="n">99.6%</td><td class="n">0.0%</td><td class="n">99.6%</td></tr>
+  <tr><td>Normal (false alarms)</td><td class="n">1,570</td><td class="n">0.0%</td><td class="n">0.3%</td><td class="n">0.3%</td></tr>
+</table>
+<p><b>The two checks cover each other.</b> The AI catches floods and the botnet that Snort's rules miss. Snort covers
+website attacks: on the whole 2018 website-attack capture it alerts on 188 of the attacker's 207 connections (90.8%)
+and on nothing else.</p>
+<p><b>A botnet host it never saw:</b> 99.8% of 15,238 botnet flows caught, with false alarms on 2 of 4,307 normal
+flows.</p>
+<p><b>Slowloris</b> is the weak spot, and the rate depends on the attack's phase: 85% across the attack, 60% over its
+complete last five minutes, 35% in the last three as the attack winds down. Snort's Challenge-ACK community rule lifts
+the last three minutes to 69.5%.</p>
+
+<h2 class="pb">9. The thesis extension: Snort-guided adaptation</h2>
+<h3>9.1 Snort as a counselor</h3>
+<p>The counselors network now accepts <b>advisors</b>: counselors that give advice but classify nothing themselves.
+Snort is one. When a detector's classifiers disagree on a connection (a conflict), Snort's verdict on the same
+connection is advice like any other, worth the trust of the most trusted rule that fired. Snort only ever says
+"attack", and only on connections it alerted on: silence is not evidence of normal traffic, since Snort cannot see
+floods or botnets.</p>
+<ul>
+  <li><b>Conflicts only.</b> Snort does not take part in cross-checking confident "normal" verdicts. In development runs
+    that turned the system into "AI or Snort", inheriting every Snort false alarm (27% of normal connections, mostly
+    Windows policy rules).</li>
+  <li><b>A trusted "attack" wins.</b> On a conflict, the most trusted "attack" advice beats any "normal" advice.
+    Otherwise the flood detector, which knows nothing about website attacks, could confidently overrule Snort on one.
+    This is the same "limited vision" reasoning as the cross-check.</li>
+</ul>
+<h3>9.2 Learning from agreement</h3>
+<p>While the detectors watch a new network, each chunk of traffic produces <b>agreement labels</b>:</p>
+<ul>
+  <li><b>attack:</b> Snort alerted and the AI says attack without Snort's advice (so Snort cannot confirm itself);</li>
+  <li><b>normal:</b> Snort is silent and every detector is unanimously sure the connection is normal.</li>
+</ul>
+<p>Everything else stays unlabelled. Each detector stays a specialist: it learns "attack" labels only for connections it
+was involved in (it said attack, or was unsure), and every detector learns the "normal" labels. A retrained detector
+replaces the old one only if:</p>
+<ol>
+  <li>it is at least as accurate on a held-back fifth of the agreement labels; and</li>
+  <li>it has not forgotten: on the original lab's labelled test data, no attack type it knew drops by more than 2 points
+    and false alarms don't rise. Without this check, retraining on mostly flood labels made the break-in detector lose
+    website attacks.</li>
+</ol>
+<p>No label from the new network is used.</p>
+<h3>9.3 Adaptive trust</h3>
+<ul>
+  <li><b>Snort rules (in the proposed system):</b> each rule's trust is a Beta estimate (prior 0.9, worth 20
+    observations), raised when the AI independently agrees and lowered when every detector is sure the connection is
+    normal. In development runs, the Windows RDP policy rule fell to 0.02 trust after the AI contradicted it 786 times,
+    while the attack rules rose to 0.996-0.9998.</li>
+  <li><b>AI detectors (ablation):</b> each cluster's accuracy, its advice confidence and optionally its choice of
+    classifiers, re-estimated from agreement labels with the lab value as a prior worth 200 samples. This turned out
+    harmful. Agreement labels are the easy cases every classifier gets right, so the estimates are biased upwards:
+    re-selecting classifiers let weaker ones vote (more false alarms, fewer website attacks caught), and inflated
+    confidence let "normal" advice win cross-checks it should lose. Agreement can safely re-weight Snort's rules, but not
+    the AI's own classifiers.</li>
+</ul>
+<h3>9.4 The experiment</h3>
+<p><code>scripts/live_detectors/adapt.py</code> trains the detectors on one lab and streams the other lab's traffic
+through the system in time order, in chunks. A fixed test set (the target's latest 20%) is scored before adaptation and
+after every chunk. It compares:</p>
+<table>
+  <tr><th style="width:30%">Configuration</th><th>Uses</th></tr>
+  <tr><td>Snort alone · AI or Snort</td><td>Baselines</td></tr>
+  <tr><td><code>ai</code></td><td>The counselors network as deployed today</td></tr>
+  <tr><td><code>+snort</code></td><td>+ Snort as a counselor</td></tr>
+  <tr><td><code>+rules</code></td><td>+ Snort counselor and adaptive rule trust</td></tr>
+  <tr><td><code>+self</code></td><td>Ablation: self-training with no Snort (labels from the AI's own confidence) —
+    isolates whether the gain comes from Snort or just self-training</td></tr>
+  <tr><td><code>+learn</code></td><td>+ Snort counselor and learning from agreement</td></tr>
+  <tr><td><code>full</code></td><td>The proposed system: Snort counselor + rule trust + learning</td></tr>
+  <tr><td><code>+trust</code>, <code>+trust-reselect</code>, <code>full+trust</code></td><td>Ablations with adaptive
+    detector trust</td></tr>
+</table>
+<p>It reports detection rate, false-alarm rate, per-attack detection and a balanced score at every step, each rate with
+a 95% Wilson confidence interval; McNemar's test for every comparison with the deployed system and the baselines (is the
+difference real or chance?); how many agreement labels each chunk produced and how many were right; the final trust of
+every Snort rule; and a blind-spot analysis (per attack type, Snort's coverage against the change in detection, so a
+drop on an attack Snort cannot see is caught).</p>
+<h3>9.5 First results (development run, single lab)</h3>
+<p>A development run on CSE-CIC-IDS2018 alone (the detectors adapt to and are tested on its held-out part) checks the
+mechanics. It is not the cross-network result.</p>
+<table>
+  <tr><th>Configuration</th><th class="n">Slowloris</th><th class="n">Website</th><th class="n">All attacks</th><th class="n">False alarms</th><th>McNemar vs ai</th></tr>
+  <tr><td><code>ai</code> (deployed)</td><td class="n">69.1%</td><td class="n">71.4%</td><td class="n">98.23%</td><td class="n">0.08%</td><td>—</td></tr>
+  <tr><td><code>+snort</code></td><td class="n">93.6%</td><td class="n">95.2%</td><td class="n">99.57%</td><td class="n">0.08%</td><td>275 vs 0, p &lt; 10⁻⁶⁰</td></tr>
+  <tr><td><code>+learn</code></td><td class="n">98.0%</td><td class="n">71.4%</td><td class="n">99.83%</td><td class="n">0.08%</td><td>332 vs 4, p &lt; 10⁻⁷⁰</td></tr>
+  <tr><td><code>+trust-reselect</code> (ablation)</td><td class="n">94.3%</td><td class="n">52.4%</td><td class="n">99.57%</td><td class="n">0.42%</td><td>279 vs 14</td></tr>
+</table>
+<p>The agreement labels were right 100% of the time for attacks (15,941 labels) and 99.9% for normal traffic. Snort as
+a counselor and learning from agreement both raise detection significantly with no extra false alarms.</p>
+<div class="box"><span class="label">Status</span><p>All three mechanisms and the experiment harness are implemented.
+The cross-network results use the CICIDS2017 packet captures (about 50 GB); the builder for that data also runs Snort on
+every day automatically, and reads the captures directly (pcapng supported). Results will be added when the bidirectional
+runs complete.</p></div>
+<h3>9.6 In live mode</h3>
+<p>The mechanisms also run in the live system. Whenever Snort runs, the detectors start with
+<code>--snort-counselor</code>; <code>NIDS_SNORT_COUNSELOR=0</code> turns it off.</p>
+<ul>
+  <li><b>Linking:</b> the Snort bridge links each alert to its connection as soon as the connection is known.</li>
+  <li><b>Waiting for Snort:</b> a detector that is unsure waits until Snort has seen that connection to the end (at most
+    10 seconds), then takes its advice.</li>
+  <li><b>Rule trust:</b> adapts from Confirmed and Disputed verdicts, and is kept in <code>logs/snort-trust.json</code>
+    between runs.</li>
+  <li><b>Fair disagreements:</b> a disagreement counts against a rule only if the AI flagged nothing from the alert's
+    source. Without this, the Challenge-ACK rule, which catches the Slowloris connections the AI misses, lost all its
+    trust (0.095); with it, the rule keeps 0.97, while the noisy Windows policy rules still drop to 0.09 and 0.36.</li>
+</ul>
+<p>On the held-out recording, the live services with Snort as a counselor caught 47% of Slowloris, against 35% without,
+with no false alarms (community rules on, live adaptive trust). Offline, with fixed trust, the same recording reaches
+69.5%. In full-speed replays, how many doubts Snort settles varies between runs, because the services race each other;
+live traffic arrives in real time.</p>
+<h3>9.7 Learning from the analyst's verdicts</h3>
+<p>On a real home network the lab-trained Flood detector flagged about 2% of connections. All of them were long-lived
+HTTPS and push connections, whose tiny keep-alive packets look like slow DoS. Snort's agreement cannot fix what Snort
+cannot see, so the person watching closes the loop.</p>
+<ul>
+  <li><b>Mark:</b> any alarm can be marked Not an attack or Real attack. The verdict is saved with the connection's
+    measurements (detectors keep those of flagged connections for 7 days) and takes the alarm out of the counts at once.
+    It also counts for or against any Snort rule that fired on that connection.</li>
+  <li><b>Teach:</b> the detectors retrain on the verdicts. A retrained detector is installed only if it gets the marked
+    connections more right and has forgotten nothing: overall, in every cluster holding lab attacks, and for every
+    attack type.</li>
+  <li><b>Switch:</b> running detectors switch to it within a minute, once it matches its checksum. A changed model
+    without a matching checksum is never loaded.</li>
+</ul>
+<p>On the 2018 lab, the normal connections the Flood detector wrongly flagged went from 4 to 0, while lab detection
+moved from 99.99% to 99.98%. The safety check rejected a retrain that would have cost the Break-in detector website
+attacks (94.2% → 90.9%).</p>
+
+<h2 class="pb">10. The dashboard and the API</h2>
+<table>
+  <tr><th style="width:20%">Page</th><th>What it shows</th></tr>
+  <tr><td>Overview</td><td>What is being watched, and the health of every service; headline numbers with a
+    plain-language verdict; top-risk attackers; AI and Snort detections over time; false alarms on your network, with
+    attack-test marking; the latest incidents</td></tr>
+  <tr><td>Alerts</td><td>Every flagged connection once, with a severity and a plain explanation. An Attackers view groups
+    alerts by source into ranked attack stories, with full-history search and a Print/PDF report</td></tr>
+  <tr><td>Detectors</td><td>Each detector's counters and how its decisions were made: on its own, by advice,
+    double-checked or a best guess; Snort as a counselor, with how many doubts it settled and its live trust in every
+    rule</td></tr>
+  <tr><td>Test with recordings</td><td>Replay a recording through the AI and Snort, apart from live monitoring</td></tr>
+  <tr><td>Results</td><td>The detectors' test results per attack type with 95% intervals; the whole system on a held-out
+    recording, with and without Snort as a counselor; the unseen botnet machine; and the thesis experiments (score over
+    time, every configuration with intervals and McNemar, agreement-label accuracy, rule trust)</td></tr>
+</table>
+<ul>
+  <li>Written for non-experts ("AI" and "rule checker" rather than "ML" and "Snort").</li>
+  <li>A notification bell for new high-severity alerts.</li>
+  <li><b>Block this IP</b> writes out a ready-to-paste firewall command; it never runs anything itself.</li>
+  <li>Offline IP reputation from public blocklists, looked up locally, so no address leaves the machine.</li>
+</ul>
+<p>The API offers login with httpOnly cookies (plus JWT tokens for scripts), detector counters and service health,
+alerts and incidents, Snort comparisons, the false-alarm journal and attack-test marking, results, IP reputation, replay
+control, and a WebSocket live feed that sends stats, alerts and health every second.</p>
+
+<h2>11. Deployment, operations and security</h2>
+<ul>
+  <li><b>One command:</b> <code>./start.sh setup</code>, then <code>./start.sh live wlan0</code> (or <code>en0</code> on
+    macOS), or <code>./start.sh --prod live wlan0</code> for production servers. It also runs in containers with
+    <code>docker compose up</code>, Snort included.</li>
+  <li><b>As services:</b> <code>sudo deploy/install-systemd.sh wlan0</code> installs one systemd unit per part. Each
+    restarts on failure, and the detectors restart with capture so two runs never mix.</li>
+  <li><b>Nothing runs as root:</b> capture and Snort get only <code>CAP_NET_RAW</code> and
+    <code>CAP_NET_ADMIN</code>.</li>
+  <li><b>Health:</b> every service sends a heartbeat. The dashboard shows one chip per part, and <code>nids health</code>
+    runs every minute from a timer.</li>
+  <li><b>Logs:</b> the system journal under systemd. Under <code>start.sh</code>, logs over 20 MB are rotated. The alert
+    journal keeps one year, and Snort rule trust is kept in <code>logs/snort-trust.json</code>.</li>
+  <li><b>Security:</b> httpOnly SameSite=Strict session cookies; a custom header on every state-changing request as a
+    CSRF guard; at most 10 login attempts a minute per client. In production the API refuses to start without a real
+    secret key, and it sends security headers. Model files are checksum-verified before loading, and the Redis instance
+    is bound to loopback.</li>
+</ul>
+
+<h2>12. Limitations</h2>
+<ul>
+  <li>The detectors learned from one lab family (CIC) with one attacker per attack type. This is exactly the problem the
+    thesis extension tackles; the demonstrated generalisation is within the CIC dataset family, and a structurally
+    different network is future work. Until then, check false alarms on your own network with the journal.</li>
+  <li>The botnet detector knows one botnet family (Ares). There is no live DDoS or infiltration detector yet; DDoS comes
+    with the 2017 data.</li>
+  <li>Slowloris detection varies with the attack's phase (35-85%).</li>
+  <li>Website attacks rely mainly on Snort: the AI had only about 200 website-attack flows to learn from. These rules
+    need visible HTTP payloads, so they do not apply to encrypted (HTTPS) traffic; flow-level detection of floods,
+    scans and botnets still works over TLS.</li>
+  <li>Snort-guided adaptation can only use Snort's help for attacks Snort can see. For floods and botnets it depends on
+    the AI detectors agreeing with each other.</li>
+  <li>Adversarial robustness and sustained throughput are not evaluated, and a long-run live false-alarm measurement on
+    a production network is future work.</li>
+</ul>
+
+<h2 class="pb">13. Project layout and how to run it</h2>
+<pre>nids/
+├── start.sh                set up and run everything
+├── deploy/                 systemd units and their installer
+├── docker/                 one-command containers (Snort compiled in)
+├── docs/                   deployment, live testing, datasets, diagrams, these PDFs
+├── models/live/            the three detectors, manifest.json, SHA256SUMS
+├── snort/                  Snort 3 configuration and the project's rules
+├── src/nids/               capture, detector, counselor (incl. Snort counselor), services, cli
+├── scripts/live_detectors/ fetch, build, train, evaluate, adapt (the thesis experiment)
+├── backend/                Django API: REST, WebSocket live feed, replays, login
+└── frontend/               Next.js dashboard
+
+./start.sh setup                    # once
+./start.sh live wlan0               # watch the network, dashboard on http://localhost:3000
+.venv/bin/nids health               # are all parts running?
+.venv/bin/nids journal-report       # false alarms over days
+python scripts/live_detectors/adapt.py --source 2018 --target 2017   # thesis experiment</pre>
+
+<h2>14. References</h2>
+<ul class="small">
+  <li>V. E. Quincozes et al., "A Counselors-Based Intrusion Detection Architecture", 2019; and "Counselors network for
+    intrusion detection", <i>International Journal of Network Management</i>, 2020 (doi:10.1002/nem.2111).</li>
+  <li>I. Sharafaldin, A. H. Lashkari, A. A. Ghorbani, "Toward Generating a New Intrusion Detection Dataset and Intrusion
+    Traffic Characterization", ICISSP 2018 (CICIDS2017); CSE-CIC-IDS2018, Canadian Institute for Cybersecurity.</li>
+  <li>M. Cantone et al., "On the Cross-Dataset Generalization of Machine Learning for Network Intrusion Detection", 2024
+    (arXiv:2402.10974).</li>
+  <li>G. Engelen, V. Rimmer, W. Joosen, "Troubleshooting an Intrusion Detection Dataset: the CICIDS2017 Case Study",
+    WTMC 2021; M. Lanvin et al., "Errors in the CICIDS2017 Dataset and the Significant Differences in Detection
+    Performances It Makes", 2023.</li>
+  <li>Snort 3 and the Snort 3 community rules, Cisco Talos (snort.org).</li>
+</ul>
+
+</body></html>

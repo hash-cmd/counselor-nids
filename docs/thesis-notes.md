@@ -5,6 +5,59 @@ an examiner finds the related work already cited and the limitations already sta
 
 ---
 
+## 0. Motivation / problem statement (for the introduction)
+
+**The real-world problem — the deployment gap.**
+Machine-learning intrusion detectors score almost perfectly in the lab and in vendor demos,
+yet routinely fail once installed on a real organisation's network: they either miss real
+attacks or bury a small security team under false alarms. The reason is well established — a
+model trained on one network does not transfer to another (the cross-dataset collapse reported
+by Cantone et al., 2024, and others). In practice this leaves an organisation with three poor
+options: pay for expensive manual tuning, buy a managed service, or disable the ML and rely on
+signatures alone.
+
+Two things make this hard to fix in the field:
+1. **Nobody can label a live network's traffic.** Supervised retraining needs labelled
+   examples of that network's own normal and attack traffic, which almost no organisation has.
+2. **Most organisations have no ML expertise** to retrain or tune a detector even if they could.
+
+**A concrete scenario (use in the intro):**
+> A small company installs an ML-based IDS. In the vendor demo it caught 99% of attacks. On the
+> company's own network it drowns its two-person security team in false alarms and misses a real
+> intrusion. The company has no labelled data from its network and no ML specialists. Today their
+> only realistic choice is to turn the ML off and trust Snort alone.
+
+**What this project does about it.**
+Almost every organisation already runs a signature engine (Snort), whose rules behave the same
+on every network. This work uses that existing, network-independent tool as a built-in *teacher*
+so the ML detector **adapts to the organisation's own network by itself** — no labelling, no ML
+expertise, no vendor. Snort advises the detectors when they are unsure, their points of
+agreement become training labels for that specific network, and each Snort rule's trust is
+tuned to how reliable it proves to be *there*.
+
+**Real-world objectives (motivated by the problem above):**
+1. **Reduce the false-alarm burden on a new network**, so a small team is not overwhelmed
+   (Snort advice on conflicts; adaptive trust down-weights rules that misfire on this network;
+   an analyst "teach the AI" loop for the rest).
+2. **Recover the detection accuracy lost to the deployment gap**, catching attacks the
+   lab-trained model would otherwise miss on the new network (self-labelling from Snort–AI
+   agreement).
+3. **Require zero labelling and zero ML expertise from the operator** — the system adapts
+   itself; the operator only runs it and occasionally confirms a verdict.
+4. **Make the decisions legible to a non-expert operator** ("AI" vs "rule checker",
+   Confirmed/Disputed, attackers, false alarms per day).
+5. **Demonstrate the adaptation is real across genuinely different networks** (the 2018↔2017
+   experiment is the *evidence*, not the end in itself).
+6. **Show it runs live, in real time, on real traffic** — not only offline.
+
+> Framing note: the cross-dataset experiment is a *proxy* for "deploying on a new organisation's
+> network." The home-network run (~2% false alarms, all from benign HTTPS/push traffic, then
+> reduced by the feedback loop) and the live cross-device attack test are the small real-world
+> case studies that turn "plausible" into "demonstrated." Lead with the operational problem;
+> present the datasets as evidence and the live runs as the real-world demonstration.
+
+---
+
 ## 1. Related work and the explicit delta
 
 Every ingredient of this system has prior art; the contribution is the **synthesis and the
