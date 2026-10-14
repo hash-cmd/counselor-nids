@@ -68,6 +68,11 @@ class ConnectionsView(APIView):
             return resp
         return Response(data)
 
+    def post(self, request):
+        """Turn the full-traffic feed on or off at runtime ({"on": true|false})."""
+        on = bool(request.data.get("on"))
+        return Response({"feed_on": monitor.set_feed(get_redis(), on)})
+
 
 class IncidentsView(APIView):
     """Flagged flows with what the ML and Snort said: ?source=all|both|ml|snort&q=&limit=&offset="""

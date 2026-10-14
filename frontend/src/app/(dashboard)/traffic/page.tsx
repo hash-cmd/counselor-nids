@@ -11,33 +11,45 @@ type Connection = {
   id: string; record_id: string; src: string | null; dst: string | null;
   source: string | null; time: number | null; flagged: boolean;
 };
-type Feed = { enabled: boolean; total_window: number; connections: Connection[] };
+type Feed = { feed_on: boolean; total_window: number; connections: Connection[] };
 
 export default function TrafficPage() {
   const [feed, setFeed] = useState<Feed | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(
+    () => api<Feed>("/connections/?limit=400").then(setFeed).catch((e) => setError(e.message)),
+    [],
+  );
 
   useEffect(() => {
     let live = true;
-    const load = () =>
-      api<Feed>("/connections/?limit=400")
-        .then((f) => live && setFeed(f))
-        .catch((e) => live && setError(e.message));
-    load();
-    const t = setInterval(load, 3000); // the feed is live; refresh a few times a minute
+    const tick = () => live && load();
+    tick();
+    const t = setInterval(tick, 3000); // the feed is live; refresh a few times a minute
     return () => {
       live = false;
       clearInterval(t);
     };
-  }, []);
+  }, [load]);
+
+  const toggle = useCallback(async () => {
+    setBusy(true);
+    try {
+      await api<{ feed_on: boolean }>("/connections/", { method: "POST", body: JSON.stringify({ on: !feed?.feed_on }) });
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }, [feed?.feed_on, load]);
 
   const exportCsv = useCallback(async () => {
     const res = await fetch(`${API_URL}/api/connections/?format=csv&limit=2000`, {
       credentials: "include",
       headers: { "X-NIDS-Client": "web" },
     });
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(await res.blob());
     const a = document.createElement("a");
     a.href = url;
     a.download = "connections.csv";
@@ -52,33 +64,43 @@ export default function TrafficPage() {
     <>
       <p className="max-w-3xl text-sm text-ink-2">
         Every connection the system judged, flagged or not — the live traffic passing the detectors. Normal connections
-        are not alarms; they are shown so the full traffic is visible and can be exported for a report.
+        are not alarms; they are shown so the full traffic is visible and can be exported for a report. It is off by
+        default, because a busy network produces thousands of connections a second.
       </p>
 
-      {!feed.enabled ? (
-        <div className="rounded-xl border border-dashed border-line bg-surface p-8 text-center text-sm text-ink-2">
-          <p className="font-semibold text-ink">The full-traffic feed is off.</p>
-          <p className="mt-1">
-            It is optional, because a busy network produces thousands of connections a second. To record every
-            connection, restart live monitoring with it on:
-          </p>
-          <code className="mt-2 inline-block rounded bg-wash px-2 py-1">NIDS_FEED_ALL=1 ./start.sh live wlan0</code>
-          <p className="mt-2 text-muted">Suspicious connections are always on the Alerts page regardless of this setting.</p>
-        </div>
-      ) : (
-        <Card
-          title="Live traffic"
-          subtitle={`The latest ${count(feed.connections.length)} of the last ${count(feed.total_window)} connections (newest first, refreshing every 3 s).`}
-          actions={
+      <Card
+        title="Live traffic"
+        subtitle={
+          feed.feed_on
+            ? `Recording on · the latest ${count(feed.connections.length)} of the last ${count(feed.total_window)} connections (newest first, refreshing every 3 s).`
+            : "Recording is off. Turn it on to see every connection pass through — live monitoring must be running."
+        }
+        actions={
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={exportCsv}
-              className="rounded-md border border-line px-3 py-1 text-xs text-ink-2 hover:bg-wash"
+              onClick={toggle}
+              disabled={busy}
+              className={`rounded-md px-3 py-1 text-xs ${feed.feed_on ? "bg-[var(--accent)] text-white" : "border border-line text-ink-2 hover:bg-wash"} disabled:opacity-50`}
             >
-              Export CSV
+              {feed.feed_on ? "Recording on — turn off" : "Turn on recording"}
             </button>
-          }
-        >
+            {feed.feed_on && feed.total_window > 0 && (
+              <button type="button" onClick={exportCsv} className="rounded-md border border-line px-3 py-1 text-xs text-ink-2 hover:bg-wash">
+                Export CSV
+              </button>
+            )}
+          </div>
+        }
+      >
+        {!feed.feed_on ? (
+          <p className="py-6 text-center text-sm text-muted">
+            Recording is off. Click <span className="font-semibold text-ink-2">Turn on recording</span> above (live
+            monitoring must be running for connections to appear). Suspicious connections are always on the Alerts page.
+          </p>
+        ) : feed.connections.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted">Recording on — waiting for connections…</p>
+        ) : (
           <DataTable
             columns={[
               { key: "time", label: "Time" },
@@ -90,15 +112,11 @@ export default function TrafficPage() {
               time: c.time ? clock(c.time) : "—",
               from: c.src ?? "—",
               to: c.dst ?? "—",
-              verdict: c.flagged ? (
-                <StatusBadge tone="critical" label="flagged" />
-              ) : (
-                <span className="text-muted">normal</span>
-              ),
+              verdict: c.flagged ? <StatusBadge tone="critical" label="flagged" /> : <span className="text-muted">normal</span>,
             }))}
           />
-        </Card>
-      )}
+        )}
+      </Card>
     </>
   );
 }

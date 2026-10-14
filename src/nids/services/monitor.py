@@ -42,7 +42,16 @@ def read_connections(r: redis.Redis, count: int = 200) -> dict:
                      "time": float(d["time"]) if d.get("time") else None,
                      "flagged": rid in flagged})
     total = r.xlen(bus.CONNECTIONS)
-    return {"enabled": total > 0, "total_window": total, "connections": rows}
+    return {"feed_on": bool(r.exists(bus.FEED_ALL)), "total_window": total, "connections": rows}
+
+
+def set_feed(r: redis.Redis, on: bool) -> bool:
+    """Turn the full-traffic feed on or off (the observer checks this each cycle)."""
+    if on:
+        r.set(bus.FEED_ALL, "1")
+    else:
+        r.delete(bus.FEED_ALL)
+    return on
 
 
 def read_alerts(r: redis.Redis, count: int = 50, after: str | None = None) -> list[dict]:

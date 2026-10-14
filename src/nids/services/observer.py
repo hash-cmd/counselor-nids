@@ -38,8 +38,11 @@ def subscriptions(r: redis.Redis) -> dict[str, list[str]]:
 def run(r: redis.Redis, exit_on_end: bool = False, block_ms: int = 1000) -> int:
     """Forward messages until stopped (or the first end-of-stream, with ``exit_on_end``)."""
     last, forwarded = "0", 0
-    feed_all = bool(os.environ.get("NIDS_FEED_ALL"))  # publish every connection for the live-traffic page
+    env_feed = bool(os.environ.get("NIDS_FEED_ALL"))  # forces the feed on from the environment
     while True:
+        # publish every connection for the live-traffic page when the env var or the dashboard
+        # toggle (a Redis flag) asks for it — checked each cycle so it turns on/off without a restart
+        feed_all = env_feed or bool(r.exists(bus.FEED_ALL))
         bus.beat(r, "observer", forwarded=forwarded)
         for _, messages in r.xread({bus.UNKNOWN: last}, block=block_ms, count=100) or []:
             for message_id, fields in messages:
