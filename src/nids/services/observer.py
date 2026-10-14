@@ -21,14 +21,27 @@ def _endpoint(ip, port) -> str:
 
 
 def _feed(r: redis.Redis, fields, source: str) -> None:
-    """Publish one connection's summary to the live-traffic stream (flagged or not)."""
-    dport = bus.field(fields, "conn_dst_port") or bus.field(fields, "Destination Port")
-    r.xadd(bus.CONNECTIONS, {
-        "record_id": bus.field(fields, "record_id") or "",
-        "src": _endpoint(bus.field(fields, "src_ip"), bus.field(fields, "src_port")),
-        "dst": _endpoint(bus.field(fields, "dst_ip"), dport),
-        "source": source, "time": repr(time.time()),
-    }, maxlen=bus.CONNECTIONS_KEPT, approximate=True)
+    """Publish each connection in a flow batch to the live-traffic stream (flagged or not). The
+    batch arrives as a JSON ``frame`` field (columns + rows), so one message is many connections."""
+    raw = bus.field(fields, "frame")
+    if not raw:
+        return
+    frame = json.loads(raw)
+    idx = {c: i for i, c in enumerate(frame["columns"])}
+    si, di, spi = idx.get("src_ip"), idx.get("dst_ip"), idx.get("src_port")
+    dpi = idx.get("conn_dst_port", idx.get("Destination Port"))
+    ri, ti = idx.get("record_id"), idx.get("timestamp", idx.get("flow_start"))
+    now = time.time()
+    cell = lambda row, i: row[i] if i is not None else None  # noqa: E731
+    pipe = r.pipeline()
+    for row in frame["data"]:
+        pipe.xadd(bus.CONNECTIONS, {
+            "record_id": str(cell(row, ri)) if ri is not None else "",
+            "src": _endpoint(cell(row, si), cell(row, spi)),
+            "dst": _endpoint(cell(row, di), cell(row, dpi)),
+            "source": source, "time": repr(float(cell(row, ti)) if ti is not None else now),
+        }, maxlen=bus.CONNECTIONS_KEPT, approximate=True)
+    pipe.execute()
 
 
 def subscriptions(r: redis.Redis) -> dict[str, list[str]]:
