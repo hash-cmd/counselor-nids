@@ -175,6 +175,54 @@ authenticated HTTPS proxy.
 
 ---
 
+## 4b. Aligning the objectives with what was built
+
+The "Trustworthy and Explainable" abstract matches the system on the Snort cross-check,
+agreement-based adaptation, the promotion and forgetting gates, and the whole trustworthiness
+theme. Two items needed reconciling; both are now addressed.
+
+**Explainability (Objective 6, RQ5, "explanation coverage" in Objective 7).** The system now
+has an explicit mechanism: `src/nids/services/explain.py` turns every alert into a structured,
+human-readable reason — which detector recognised it (the attack family), how it decided (on
+its own, by a counselor's advice, or double-checked), which Snort rule matched, and the
+Confirmed/Disputed/AI-only agreement status. `explain.coverage()` measures **explanation
+coverage** (the share of alerts carrying a valid reason), reported by `nids journal-report`.
+By construction every ML alert names a detector and every Snort alert a rule, so coverage is
+total — which is itself the result to state: *unlike a black-box classifier, every alert the
+architecture raises carries a reason (100% explanation coverage)*. If the examiner expects a
+model-internal method, add SHAP/LIME on the ML detectors as the stronger, optional step and
+scope the claim accordingly.
+
+**Objective 1 / RQ1 / H1 — "detectors each trained on a different dataset" and their conflict.**
+The implemented detectors are **specialists by attack family** (Flood, Break-in, Botnet),
+trained on the same lab and split by attack — not one-per-dataset. "Conflict" in this system is
+a detector's classifiers disagreeing so that it must consult the others. Reword to match:
+
+> **Objective 1 (reworded).** Implement a baseline counsellor network of specialist ML
+> detectors (each specialising in one attack family) and measure how often a detector cannot
+> decide on its own and must consult the others (the conflict/consultation rate), and how far a
+> counsellor trained on one network degrades when moved to a different one.
+>
+> **RQ1 (reworded).** To what extent do the counsellor network's detectors fail to decide on
+> their own (conflict rate), and how much does a lab-trained counsellor's accuracy drop on a
+> different network (the deployment gap)?
+>
+> **H1₀ / H1₁.** Moving a lab-trained counsellor to a different network does **not** / **does**
+> significantly change its detection performance.
+
+The **conflict rate** is now measured: `adapt.py` records `conflict_rate` per configuration and
+step in `curve.csv` (the fraction of connections where some detector's resolution is not
+`unanimous`), and the live Detectors page already shows the same breakdown (sure on its own /
+asked a colleague / double-checked / best guess). The cross-network degradation is the headline
+2018↔2017 result.
+
+**Metrics (Objective 7).** `evaluation.metrics` now reports **precision, recall and F1**
+alongside detection and false-alarm rates (so `train.py` and `adapt.py` output them), the
+**conflict rate** is in `curve.csv`, **performance retention** is what the forgetting gate
+checks, and **explanation coverage** comes from `explain.coverage()`.
+
+---
+
 ## 5. Pre-submission checklist
 
 - [ ] Run `build_cicids2017.py` → `train.py` (both labs) → `adapt.py --source 2018 --target 2017`
@@ -185,4 +233,8 @@ authenticated HTTPS proxy.
 - [ ] Add the related-work citations in §1 and the delta paragraph.
 - [ ] Scope the generalisation claim (§2); add a third dataset if time permits.
 - [ ] Add the labelling note (§3) and the limitations (§4).
+- [ ] Reword Objective 1 / RQ1 / H1 to the attack-family specialists + conflict rate (§4b).
+- [ ] Report precision / recall / F1, the conflict rate (`curve.csv`), performance retention,
+      and explanation coverage (`explain.coverage()` / `nids journal-report`) for Objective 7.
+- [ ] State the explainability mechanism and its coverage (§4b); add SHAP/LIME only if needed.
 - [ ] (Before any production test) bind Redis to localhost; add a throughput number.

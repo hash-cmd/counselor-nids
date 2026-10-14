@@ -18,10 +18,19 @@ from scipy import stats
 
 def metrics(y_true, y_pred) -> dict[str, float]:
     y_true, y_pred = np.asarray(y_true, dtype=bool), np.asarray(y_pred, dtype=bool)
+    tp = int((y_pred & y_true).sum())
+    fp = int((y_pred & ~y_true).sum())
+    fn = int((~y_pred & y_true).sum())
+    precision = tp / (tp + fp) if tp + fp else float("nan")
+    recall = tp / (tp + fn) if tp + fn else float("nan")  # = detection_rate
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
     return {
         "accuracy": float(np.mean(y_true == y_pred)),
         "detection_rate": float(np.mean(y_pred[y_true])) if y_true.any() else float("nan"),
         "false_alarm_rate": float(np.mean(y_pred[~y_true])) if (~y_true).any() else float("nan"),
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1": float(f1),
     }
 
 

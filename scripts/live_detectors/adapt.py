@@ -194,9 +194,12 @@ def run_config(name, base, stream_chunks, test, source_check, args):
     final = run_config.last = {}
 
     def evaluate(step):
-        _, verdict = judge(detectors, test, snort, trust, args.min_accuracy)
+        finals, verdict = judge(detectors, test, snort, trust, args.min_accuracy)
         final["verdict"] = verdict
-        row = {"config": name, "step": step, **score(test, verdict)}
+        # conflict rate: a connection where some detector could not decide on its own
+        # (its classifiers disagreed, so it asked for advice, double-checked, or guessed)
+        conflicted = np.logical_or.reduce([(f["resolution"] != "unanimous").to_numpy() for f in finals.values()])
+        row = {"config": name, "step": step, "conflict_rate": float(conflicted.mean()), **score(test, verdict)}
         curve.append(row)
         print(f"  {name:7s} step {step:2d}: detection {row['detection_rate']:.2%}  "
               f"false alarms {row['false_alarm_rate']:.3%}  balanced {row['balanced']:.2%}", flush=True)

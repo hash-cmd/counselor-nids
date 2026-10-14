@@ -24,6 +24,7 @@ from pathlib import Path
 import redis
 
 from . import bus
+from . import explain
 from .snort_bridge import ALERTS as SNORT_ALERTS
 
 DEFAULT_DIR = Path(os.environ.get("NIDS_JOURNAL_DIR",
@@ -235,6 +236,8 @@ def report(entries: list[dict], exclude=(), top: int = 10, marked: dict | None =
             "by_agreement": dict(Counter(e.get("agreement", "") for e in snort).most_common()),
             "top_rules": dict(Counter(e.get("msg", "") for e in snort).most_common(top)),
         },
+        # explainability: the share of alerts that carry a human-readable reason
+        "explanation": explain.coverage([e for e in entries if e["kind"] in ("ml", "snort")]),
         "excluded_test_alerts": {"ml": len(ml_tests), "snort": len(snort_tests)},
         "marked": {"real_attacks": len({(e.get("run", ""), e["record_id"]) for e in real}),
                    "confirmed_false_alarms": sum(marked.get(key) == "normal" for key in
