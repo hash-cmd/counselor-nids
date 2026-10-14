@@ -28,6 +28,23 @@ def read_stats(r: redis.Redis) -> dict[str, dict]:
     return stats
 
 
+def read_connections(r: redis.Redis, count: int = 200) -> dict:
+    """The latest connections the system judged, flagged or not (populated only when the
+    observer runs with NIDS_FEED_ALL=1). Each is marked flagged if any detector alerted on it."""
+    entries = r.xrevrange(bus.CONNECTIONS, "+", "-", count=count)
+    flagged = {bus.text(x) for x in r.smembers(bus.FLAGGED_ML)}
+    rows = []
+    for entry_id, fields in entries:
+        d = {bus.text(k): bus.text(v) for k, v in fields.items()}
+        rid = d.get("record_id", "")
+        rows.append({"id": bus.text(entry_id), "record_id": rid, "src": d.get("src"),
+                     "dst": d.get("dst"), "source": d.get("source"),
+                     "time": float(d["time"]) if d.get("time") else None,
+                     "flagged": rid in flagged})
+    total = r.xlen(bus.CONNECTIONS)
+    return {"enabled": total > 0, "total_window": total, "connections": rows}
+
+
 def read_alerts(r: redis.Redis, count: int = 50, after: str | None = None) -> list[dict]:
     """Newest alerts first; with ``after``, only alerts newer than that stream id."""
     entries = r.xrevrange(bus.ALERTS, "+", f"({after}" if after else "-", count=count)

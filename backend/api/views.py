@@ -46,6 +46,29 @@ class AlertsView(APIView):
         return Response({"alerts": monitor.read_alerts(get_redis(), limit, after)})
 
 
+class ConnectionsView(APIView):
+    """GET ?limit=: the latest connections the system judged, flagged or not — the live-traffic
+    feed. Populated only when monitoring runs with NIDS_FEED_ALL=1. ?format=csv downloads the
+    current window as a file (the exportable traffic record for a report)."""
+
+    def get(self, request):
+        limit = min(int(request.query_params.get("limit", 300)), 2000)
+        data = monitor.read_connections(get_redis(), limit)
+        if request.query_params.get("format") == "csv":
+            import csv
+            import io
+            buf = io.StringIO()
+            w = csv.writer(buf)
+            w.writerow(["time", "record_id", "source", "src", "dst", "verdict"])
+            for c in data["connections"]:
+                w.writerow([c["time"], c["record_id"], c["source"], c["src"], c["dst"],
+                            "attack" if c["flagged"] else "normal"])
+            resp = Response(buf.getvalue(), content_type="text/csv")
+            resp["Content-Disposition"] = 'attachment; filename="connections.csv"'
+            return resp
+        return Response(data)
+
+
 class IncidentsView(APIView):
     """Flagged flows with what the ML and Snort said: ?source=all|both|ml|snort&q=&limit=&offset="""
 
