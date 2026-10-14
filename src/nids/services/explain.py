@@ -50,6 +50,35 @@ def explain(alert: dict) -> dict:
             "reason": reason, "explained": bool(detector)}
 
 
+def feature_contributions(detector, flow, top: int = 6) -> list[dict]:
+    """Model-internal explanation: the features that drove one detector's verdict on one
+    connection, via SHAP (on-demand; needs the ``shap`` package, imported lazily). ``flow`` is a
+    one-row DataFrame holding the detector's features. Returns the top features by impact, each
+    pushing the verdict toward "attack" (positive) or "normal" (negative).
+
+    The detector picks, per cluster, the classifiers that vote; we explain the best tree-based
+    one for this connection's cluster (TreeExplainer is exact and fast). Values are in the
+    model's transformed feature space but keep the original feature names, so the direction
+    ("this feature pushed toward attack") is what an analyst reads.
+    """
+    import numpy as np
+    import shap  # heavy (numba); only loaded when a model-internal explanation is requested
+
+    m = detector.model
+    Xt = m.transform(flow[detector.features])
+    profile = m.clusters[int(m.assign_clusters(Xt)[0])]
+    trees = ("DecisionTreeClassifier", "RandomForestClassifier", "ExtraTreesClassifier")
+    name = next((n for n in [profile.best, *profile.selected] if type(m.classifiers[n]).__name__ in trees), None)
+    if name is None:  # only a non-tree classifier (e.g. naive Bayes) was selected here
+        return []
+    sv = np.asarray(shap.TreeExplainer(m.classifiers[name]).shap_values(Xt))
+    vals = sv[0, :, 1] if sv.ndim == 3 else sv[0]  # contributions toward class 1 ("attack")
+    names = [n.split("__", 1)[-1] for n in m.preprocessor.get_feature_names_out()]
+    ranked = sorted(zip(names, vals), key=lambda kv: -abs(float(kv[1])))[:top]
+    return [{"feature": f, "contribution": float(v), "toward": "attack" if v > 0 else "normal"}
+            for f, v in ranked]
+
+
 def coverage(alerts) -> dict:
     """Explanation coverage over a list of alerts: how many carry a valid reason, and from
     which source. By design every ML alert names a detector and every Snort alert a rule, so

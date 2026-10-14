@@ -6,7 +6,7 @@ from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from nids.services import feedback, journal, monitor
+from nids.services import explain, feedback, journal, monitor
 
 from . import learning, replay, reputation, results
 from .redis_client import get_redis
@@ -175,6 +175,49 @@ class FeedbackView(APIView):
         entry = feedback.mark(get_redis(), body.validated_data["record_id"], body.validated_data["verdict"],
                               body.validated_data["note"], feedback_file())
         return Response(entry, status=status.HTTP_201_CREATED)
+
+
+_DETECTOR_CACHE: dict = {}
+
+
+def _detector(name: str):
+    """Load a live detector by name (cached). Only the promoted detectors in models/live/ are
+    loadable, so a crafted name cannot make us unpickle an arbitrary file."""
+    if name not in {p.stem for p in replay.models()}:
+        return None
+    if name not in _DETECTOR_CACHE:
+        import joblib
+        _DETECTOR_CACHE[name] = joblib.load(replay.models_dir() / f"{name}.joblib")
+    return _DETECTOR_CACHE[name]
+
+
+class ExplainView(APIView):
+    """GET ?record_id=&detector=: the features that drove a detector's verdict on a flagged
+    connection (SHAP). The connection's measurements are kept in Redis for 7 days after it is
+    flagged, so the explanation is available for that long."""
+
+    def get(self, request):
+        rid = request.query_params.get("record_id")
+        name = request.query_params.get("detector", "")
+        if not rid or not rid.isdigit():
+            return Response({"detail": "record_id (integer) required"}, status=status.HTTP_400_BAD_REQUEST)
+        detector = _detector(name)
+        if detector is None:
+            return Response({"available": False, "reason": "unknown detector"})
+        raw = get_redis().get(f"{feedback.FLOW}{int(rid)}")
+        if not raw:
+            return Response({"available": False, "reason": "the connection's measurements are no "
+                             "longer stored (kept for 7 days after it was flagged)"})
+        import json
+        import pandas as pd
+        try:
+            flow = pd.DataFrame([json.loads(raw)])
+            features = explain.feature_contributions(detector, flow)
+        except ImportError:
+            return Response({"available": False, "reason": "the shap package is not installed on the server"})
+        except Exception as exc:  # noqa: BLE001 - surface any model/SHAP error to the client
+            return Response({"available": False, "reason": str(exc)[:200]})
+        return Response({"available": True, "detector": name, "features": features})
 
 
 class FeedbackLearnView(APIView):

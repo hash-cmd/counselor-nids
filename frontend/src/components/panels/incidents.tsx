@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import { api } from "@/lib/api";
 import { clock, count } from "@/lib/format";
 import { useFeedback, type Verdict } from "@/lib/feedback";
 import { type Incident, type IncidentSource, SOURCE_LABELS } from "@/lib/incidents";
@@ -154,6 +155,68 @@ function VerdictButtons({ incident }: { incident: Incident }) {
   );
 }
 
+type ExplainFeature = { feature: string; contribution: number; toward: "attack" | "normal" };
+type ExplainResponse = { available: boolean; detector?: string; features?: ExplainFeature[]; reason?: string };
+
+/** Model-internal explanation: the connection features that drove the AI's verdict (SHAP),
+ *  fetched on demand from /explain/. Shown only for AI alerts whose flow is still stored. */
+function WhyFlagged({ incident }: { incident: Incident }) {
+  const origin = incident.ml?.origins.length ? bySpecificity(incident.ml.origins)[0] : null;
+  const [res, setRes] = useState<ExplainResponse | null>(null);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    if (incident.record_id == null || !origin) return;
+    let live = true;
+    api<ExplainResponse>(`/explain/?record_id=${incident.record_id}&detector=${encodeURIComponent(origin)}`)
+      .then((r) => live && setRes(r))
+      .catch(() => live && setErr(true));
+    return () => {
+      live = false;
+    };
+  }, [incident.record_id, origin]);
+
+  if (incident.ml == null || origin == null) return null; // AI alerts only
+  const feats = res?.features ?? [];
+  const max = Math.max(1e-9, ...feats.map((f) => Math.abs(f.contribution)));
+  return (
+    <div className="mb-4 rounded-md bg-wash p-3 text-xs">
+      <p className="font-semibold text-ink">Why the AI flagged this — top features</p>
+      <p className="mt-0.5 text-muted">
+        How much each measurement pushed the {detectorName(origin)}&apos;s verdict toward attack (orange) or normal (grey).
+      </p>
+      {err ? (
+        <p className="mt-2 text-muted">Explanation unavailable.</p>
+      ) : res == null ? (
+        <p className="mt-2 text-muted">Working out the reason…</p>
+      ) : !res.available ? (
+        <p className="mt-2 text-muted">{res.reason ?? "No explanation available."}</p>
+      ) : feats.length === 0 ? (
+        <p className="mt-2 text-muted">No per-feature explanation for this connection.</p>
+      ) : (
+        <ul className="mt-2 space-y-1">
+          {feats.map((f) => (
+            <li key={f.feature} className="grid grid-cols-[9rem_1fr] items-center gap-2">
+              <span className="truncate text-ink-2" title={f.feature}>
+                {f.feature}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span
+                  className="h-2 rounded"
+                  style={{
+                    width: `${Math.round((Math.abs(f.contribution) / max) * 100)}%`,
+                    background: f.toward === "attack" ? "var(--accent)" : "var(--ink-muted)",
+                  }}
+                />
+                <span className="text-muted">{f.toward}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function IncidentDetail({ incident, onClose }: { incident: Incident; onClose: () => void }) {
   const sev = severityScore(incident);
   const rows: [string, React.ReactNode][] = [
@@ -216,6 +279,7 @@ export function IncidentDetail({ incident, onClose }: { incident: Incident; onCl
           {trust(incident)}
         </p>
       </div>
+      <WhyFlagged key={incident.record_id ?? "none"} incident={incident} />
       <dl className="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-2 text-xs">
         {rows.map(([label, value]) => (
           <div key={label} className="contents">

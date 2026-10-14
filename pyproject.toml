@@ -16,6 +16,7 @@ live = ["redis[hiredis]", "cicflowmeter"]
 web = [
     "redis[hiredis]", "django", "djangorestframework", "djangorestframework-simplejwt",
     "django-cors-headers", "channels", "daphne", "python-decouple", "whitenoise",
+    "shap",  # model-internal per-alert explanations (the /explain endpoint)
 ]
 # retraining and testing the live detectors (scripts/live_detectors/)
 train = ["nids[live]"]
