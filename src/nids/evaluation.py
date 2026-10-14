@@ -14,6 +14,7 @@ correction otherwise.
 
 import numpy as np
 from scipy import stats
+from sklearn.metrics import average_precision_score, cohen_kappa_score, matthews_corrcoef
 
 
 def metrics(y_true, y_pred) -> dict[str, float]:
@@ -24,6 +25,9 @@ def metrics(y_true, y_pred) -> dict[str, float]:
     precision = tp / (tp + fp) if tp + fp else float("nan")
     recall = tp / (tp + fn) if tp + fn else float("nan")  # = detection_rate
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    # Matthews correlation: robust on imbalanced traffic (0 when a class is absent)
+    both = y_true.any() and (~y_true).any() and y_pred.any() and (~y_pred).any()
+    mcc = float(matthews_corrcoef(y_true, y_pred)) if both else 0.0
     return {
         "accuracy": float(np.mean(y_true == y_pred)),
         "detection_rate": float(np.mean(y_pred[y_true])) if y_true.any() else float("nan"),
@@ -31,7 +35,28 @@ def metrics(y_true, y_pred) -> dict[str, float]:
         "precision": float(precision),
         "recall": float(recall),
         "f1": float(f1),
+        "mcc": mcc,
     }
+
+
+def cohen_kappa(a, b) -> float:
+    """Agreement between two binary labellings beyond what chance alone would give (Cohen's
+    kappa): 1 is perfect agreement, 0 is chance-level. Used to judge how much the Snort-AI
+    agreement that produces the pseudo-labels is more than coincidence."""
+    a, b = np.asarray(a, dtype=bool), np.asarray(b, dtype=bool)
+    if len(a) == 0:
+        return float("nan")
+    return float(cohen_kappa_score(a, b))
+
+
+def pr_auc(y_true, scores) -> float:
+    """Area under the precision-recall curve (average precision). Unlike ROC-AUC it stays
+    informative when attacks are a small minority. Needs a continuous score per sample, not a
+    binary verdict."""
+    y = np.asarray(y_true, dtype=bool)
+    if not y.any() or y.all():
+        return float("nan")
+    return float(average_precision_score(y, np.asarray(scores, dtype=float)))
 
 
 def wilson(successes: int, total: int, confidence: float = 0.95) -> tuple[float, float]:

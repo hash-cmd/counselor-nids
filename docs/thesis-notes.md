@@ -216,10 +216,31 @@ step in `curve.csv` (the fraction of connections where some detector's resolutio
 asked a colleague / double-checked / best guess). The cross-network degradation is the headline
 2018↔2017 result.
 
-**Metrics (Objective 7).** `evaluation.metrics` now reports **precision, recall and F1**
-alongside detection and false-alarm rates (so `train.py` and `adapt.py` output them), the
-**conflict rate** is in `curve.csv`, **performance retention** is what the forgetting gate
-checks, and **explanation coverage** comes from `explain.coverage()`.
+**Metrics (Objective 7).** `evaluation.metrics` now reports **precision, recall, F1 and MCC**
+(MCC and **PR-AUC** are the imbalance-robust pair) alongside detection and false-alarm rates (so
+`train.py` and `adapt.py` output them), the **conflict rate** and **PR-AUC** are in `curve.csv`,
+**Cohen's kappa** for the Snort-AI agreement is in `pseudo_labels.csv`, **performance retention**
+is what the forgetting gate checks, and **explanation coverage** comes from `explain.coverage()`.
+
+## 4c. Mathematical formulations added (for the methodology chapter)
+
+- **Adaptive trust = Beta reputation.** Each Snort rule's trust is the posterior mean of a Beta
+  prior: `trust = (p0·w + agreements) / (w + agreements + disagreements)` with an informative
+  prior `p0 = 0.9`, weight `w = 20` (`RuleTrust`). Optional **forgetting** fades old evidence:
+  `alpha <- lambda·alpha + agree`, `beta <- lambda·beta + disagree` (`--rule-decay` lambda; 1.0
+  keeps everything). This gives both a trust score and an implied confidence (evidence count).
+- **Cohen's kappa** `kappa = (po - pe)/(1 - pe)` measures Snort-AI agreement beyond chance —
+  reported per chunk, so the pseudo-label signal is shown to be more than coincidence.
+- **MCC** `(/(TP·TN - FP·FN) / sqrt((TP+FP)(TP+FN)(TN+FP)(TN+FN)))` and **PR-AUC** (average
+  precision) are reported because accuracy misleads on imbalanced traffic.
+
+Not adopted, with reasons to state:
+- **Elastic Weight Consolidation** is a gradient/neural-net method (Fisher information over
+  parameters); the detectors are tree ensembles + naive Bayes, so EWC does not apply — the
+  **gate-based** forgetting prevention is the correct tool for this model family.
+- **Log-odds pooling / Platt-isotonic calibration / cost-based threshold** require moving from
+  the counselor's votes to calibrated probabilities, which changes the base architecture
+  (Quincozes). Present as an alternative design / future work, not the main path.
 
 ---
 

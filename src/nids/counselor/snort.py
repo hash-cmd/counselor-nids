@@ -23,22 +23,27 @@ class RuleTrust:
     """Trust in each Snort rule: the posterior mean of a Beta prior (``prior`` with weight
     ``prior_weight`` pseudo-observations) updated with agreements and disagreements."""
 
-    def __init__(self, prior: float = 0.9, prior_weight: float = 20.0):
-        self.prior, self.prior_weight = prior, prior_weight
-        self.agree: dict[str, int] = defaultdict(int)
-        self.disagree: dict[str, int] = defaultdict(int)
+    def __init__(self, prior: float = 0.9, prior_weight: float = 20.0, decay: float = 1.0):
+        self.prior, self.prior_weight, self.decay = prior, prior_weight, decay
+        self.agree: dict[str, float] = defaultdict(float)
+        self.disagree: dict[str, float] = defaultdict(float)
 
     def update(self, rule: str, agree: int = 0, disagree: int = 0) -> None:
+        # forgetting: old evidence decays as the network changes (decay=1.0 keeps all of it).
+        # alpha <- lambda*alpha + agree, beta <- lambda*beta + disagree.
+        if self.decay != 1.0:
+            self.agree[rule] *= self.decay
+            self.disagree[rule] *= self.decay
         self.agree[rule] += agree
         self.disagree[rule] += disagree
 
     def score(self, rule: str) -> float:
-        a, d = self.agree.get(rule, 0), self.disagree.get(rule, 0)
+        a, d = self.agree.get(rule, 0.0), self.disagree.get(rule, 0.0)
         return (self.prior * self.prior_weight + a) / (self.prior_weight + a + d)
 
     def table(self) -> dict[str, dict]:
         rules = set(self.agree) | set(self.disagree)
-        return {r: {"agree": self.agree.get(r, 0), "disagree": self.disagree.get(r, 0),
+        return {r: {"agree": round(self.agree.get(r, 0.0), 2), "disagree": round(self.disagree.get(r, 0.0), 2),
                     "trust": round(self.score(r), 4)} for r in sorted(rules)}
 
 

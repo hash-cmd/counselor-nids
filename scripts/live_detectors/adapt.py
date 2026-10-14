@@ -43,7 +43,10 @@ chunks; the rest is the adaptation stream. Baselines: Snort alone, and AI-or-Sno
 
 Statistics: every rate comes with a 95% Wilson interval, and each configuration's final
 verdicts are compared with McNemar's test (same test flows) against the deployed system
-(``ai``) and the baselines, and ``full`` against every other configuration.
+(``ai``) and the baselines, and ``full`` against every other configuration. curve.csv also
+carries precision/recall/F1 and MCC (robust on imbalanced traffic), PR-AUC (ranking quality
+from the detectors' vote count) and the conflict rate; pseudo_labels.csv carries Cohen's kappa
+for the Snort-AI agreement. ``--rule-decay`` < 1 fades old rule-trust evidence (forgetting).
 
 Writes results/adaptation/<source>_to_<target>/: curve.csv (per config and step: detection,
 false alarms with intervals, per attack type), mcnemar.csv, pseudo_labels.csv (how many
@@ -74,7 +77,7 @@ from nids.datasets.flow_features import CIC2018_TO_2017  # noqa: E402
 from nids.datasets.paths import RESULTS_DIR  # noqa: E402
 from nids.detector.classifiers import CLASSIFIERS  # noqa: E402
 from nids.detector.training import build_detector  # noqa: E402
-from nids.evaluation import mcnemar, metrics_with_intervals, wilson  # noqa: E402
+from nids.evaluation import cohen_kappa, mcnemar, metrics_with_intervals, pr_auc, wilson  # noqa: E402
 
 FEATURES = list(CIC2018_TO_2017.values())
 CONFIGS = {  # name: (snort counselor, adaptive trust: None|"rules"|"confidence"|"reselect", self-learning, label source)
@@ -187,7 +190,7 @@ def forgetting(old, new, source_check: pd.DataFrame, args) -> list[str]:
 def run_config(name, base, stream_chunks, test, source_check, args):
     snort, adaptive, learn, label_src = CONFIGS[name]
     detectors = [copy.deepcopy(d) for d in base]
-    trust = RuleTrust(prior=0.9, prior_weight=args.rule_prior)
+    trust = RuleTrust(prior=0.9, prior_weight=args.rule_prior, decay=args.rule_decay)
     pools = {d.name: ([], []) for d in base}  # agreement labels each detector may learn from
     ai_sources: set = set()  # sources the AI has flagged on its own
     curve, labels_log = [], []
@@ -199,7 +202,11 @@ def run_config(name, base, stream_chunks, test, source_check, args):
         # conflict rate: a connection where some detector could not decide on its own
         # (its classifiers disagreed, so it asked for advice, double-checked, or guessed)
         conflicted = np.logical_or.reduce([(f["resolution"] != "unanimous").to_numpy() for f in finals.values()])
-        row = {"config": name, "step": step, "conflict_rate": float(conflicted.mean()), **score(test, verdict)}
+        # a graded score (how many detectors flag the connection) lets us rank, so PR-AUC is
+        # defined even though the final verdict is binary
+        votes = np.add.reduce([f["prediction"].to_numpy(dtype=float) for f in finals.values()])
+        row = {"config": name, "step": step, "conflict_rate": float(conflicted.mean()),
+               "pr_auc": pr_auc(test["is_attack"].to_numpy(), votes), **score(test, verdict)}
         curve.append(row)
         print(f"  {name:7s} step {step:2d}: detection {row['detection_rate']:.2%}  "
               f"false alarms {row['false_alarm_rate']:.3%}  balanced {row['balanced']:.2%}", flush=True)
@@ -214,12 +221,15 @@ def run_config(name, base, stream_chunks, test, source_check, args):
         a_right, n_right = int((p_attack & truth).sum()), int((p_normal & ~truth).sum())
         a_low, a_high = wilson(a_right, int(p_attack.sum()))
         n_low, n_high = wilson(n_right, int(p_normal.sum()))
+        # Cohen's kappa: how much Snort and the AI agree beyond chance (the signal the labels
+        # rest on). For the +self ablation there is no Snort, so it is not meaningful.
+        kappa = cohen_kappa(chunk["snort_rules"].map(bool).to_numpy(), own_attack) if label_src != "ai" else float("nan")
         labels_log.append({"config": name, "step": step, "flows": len(chunk),
                            "attack_labels": int(p_attack.sum()), "attack_labels_right": a_right,
                            "attack_label_precision_low": a_low, "attack_label_precision_high": a_high,
                            "normal_labels": int(p_normal.sum()), "normal_labels_right": n_right,
                            "normal_label_precision_low": n_low, "normal_label_precision_high": n_high,
-                           "true_attacks": int(truth.sum())})
+                           "snort_ai_kappa": round(kappa, 4), "true_attacks": int(truth.sum())})
 
         # agreement-labelled samples; normals capped so they don't swamp the attacks
         idx_a = np.flatnonzero(p_attack)
@@ -293,6 +303,8 @@ def main():
     parser.add_argument("--min-accuracy", type=float, default=0.9)
     parser.add_argument("--cluster-prior", type=float, default=200.0, help="weight of the lab estimate (+trust)")
     parser.add_argument("--rule-prior", type=float, default=20.0, help="weight of a Snort rule's prior trust")
+    parser.add_argument("--rule-decay", type=float, default=1.0,
+                        help="forgetting factor for rule trust (lambda); 1.0 keeps all evidence, <1 fades old evidence")
     parser.add_argument("--normal-per-attack", type=int, default=3)
     parser.add_argument("--min-normals", type=int, default=2000)
     parser.add_argument("--gate-tolerance", type=float, default=0.005)
