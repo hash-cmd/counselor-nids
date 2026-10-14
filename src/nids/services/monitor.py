@@ -1,12 +1,50 @@
 """Live view of every detector's counters."""
 
+import ipaddress
 import json
+import socket
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 import redis
 
 from . import bus
+
+_RDNS: dict[str, str | None] = {}  # ip -> hostname (None once a lookup failed); cached for the process
+
+
+def _host(endpoint: str | None) -> str | None:
+    """The IP part of an "ip:port" endpoint, or None when there is no routable address."""
+    if not endpoint or endpoint.startswith("port "):
+        return None
+    ip = endpoint.rsplit(":", 1)[0]
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        return None
+    return ip
+
+
+def _resolve_names(endpoints, budget: float = 1.0) -> None:
+    """Reverse-DNS the destinations we have not looked up yet, caching the result. Bounded
+    to ``budget`` seconds total and done in a thread pool so a slow PTR never stalls the page;
+    anything unresolved in time stays absent and is retried on the next poll. Private and
+    link-local addresses are skipped (they do not resolve and would only leak to the resolver)."""
+    todo = []
+    for ep in {_host(e) for e in endpoints}:
+        if ep and ep not in _RDNS and ipaddress.ip_address(ep).is_global:
+            todo.append(ep)
+    if not todo:
+        return
+    with ThreadPoolExecutor(max_workers=min(16, len(todo))) as pool:
+        futures = {ip: pool.submit(socket.gethostbyaddr, ip) for ip in todo}
+        deadline = time.monotonic() + budget
+        for ip, fut in futures.items():
+            try:
+                _RDNS[ip] = fut.result(timeout=max(0.0, deadline - time.monotonic()))[0]
+            except Exception:  # noqa: BLE001 - timeout, NXDOMAIN, no PTR: all mean "no name"
+                _RDNS[ip] = None
 
 
 def read_stats(r: redis.Redis) -> dict[str, dict]:
@@ -40,11 +78,15 @@ def read_connections(r: redis.Redis, count: int = 200) -> dict:
         rows.append({"id": bus.text(entry_id), "record_id": rid, "src": d.get("src"),
                      "dst": d.get("dst"), "source": d.get("source"),
                      "proto": d.get("proto"),
+                     "flags": d.get("flags") or None,
                      "packets": int(d["packets"]) if d.get("packets") else None,
                      "bytes": int(d["bytes"]) if d.get("bytes") else None,
                      "duration": float(d["duration"]) if d.get("duration") else None,
                      "time": float(d["time"]) if d.get("time") else None,
                      "flagged": rid in flagged})
+    _resolve_names(row["dst"] for row in rows)  # reverse-DNS the destinations (cached, bounded)
+    for row in rows:
+        row["name"] = _RDNS.get(_host(row["dst"]) or "")
     total = r.xlen(bus.CONNECTIONS)
     return {"feed_on": bool(r.exists(bus.FEED_ALL)), "total_window": total, "connections": rows}
 

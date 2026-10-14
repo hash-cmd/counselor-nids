@@ -35,6 +35,8 @@ def _feed(r: redis.Redis, fields, source: str) -> None:
     proto_i, dur_i = idx.get("protocol"), idx.get("Flow Duration")
     fpk, bpk = idx.get("Total Fwd Packets"), idx.get("Total Backward Packets")
     fby, bby = idx.get("Total Length of Fwd Packets"), idx.get("Total Length of Bwd Packets")
+    # TCP flags seen on the connection (SYN-only = a scan/half-open; SYN+ACK = established)
+    flag_i = [(nm, idx.get(f"{nm} Flag Count")) for nm in ("SYN", "ACK", "FIN", "RST", "PSH", "URG")]
     now = time.time()
     PROTO = {6: "TCP", 17: "UDP", 1: "ICMP"}
     cell = lambda row, i: row[i] if i is not None else None  # noqa: E731
@@ -46,6 +48,7 @@ def _feed(r: redis.Redis, fields, source: str) -> None:
             "src": _endpoint(cell(row, si), cell(row, spi)),
             "dst": _endpoint(cell(row, di), cell(row, dpi)),
             "proto": PROTO.get(int(num(row, proto_i)), str(cell(row, proto_i) or "")),
+            "flags": " ".join(nm for nm, i in flag_i if i is not None and num(row, i) > 0),
             "packets": int(num(row, fpk) + num(row, bpk)),
             "bytes": int(num(row, fby) + num(row, bby)),
             "duration": repr(round(num(row, dur_i) / 1e6, 2)),  # microseconds -> seconds
