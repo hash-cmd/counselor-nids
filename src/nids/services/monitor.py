@@ -39,6 +39,10 @@ def read_connections(r: redis.Redis, count: int = 200) -> dict:
         rid = d.get("record_id", "")
         rows.append({"id": bus.text(entry_id), "record_id": rid, "src": d.get("src"),
                      "dst": d.get("dst"), "source": d.get("source"),
+                     "proto": d.get("proto"),
+                     "packets": int(d["packets"]) if d.get("packets") else None,
+                     "bytes": int(d["bytes"]) if d.get("bytes") else None,
+                     "duration": float(d["duration"]) if d.get("duration") else None,
                      "time": float(d["time"]) if d.get("time") else None,
                      "flagged": rid in flagged})
     total = r.xlen(bus.CONNECTIONS)

@@ -30,15 +30,25 @@ def _feed(r: redis.Redis, fields, source: str) -> None:
     idx = {c: i for i, c in enumerate(frame["columns"])}
     si, di, spi = idx.get("src_ip"), idx.get("dst_ip"), idx.get("src_port")
     dpi = idx.get("conn_dst_port", idx.get("Destination Port"))
-    ri, ti = idx.get("record_id"), idx.get("timestamp", idx.get("flow_start"))
+    ri = idx.get("record_id")
+    ti = idx.get("flow_end", idx.get("flow_start"))  # wall-clock time (the "timestamp" col is relative)
+    proto_i, dur_i = idx.get("protocol"), idx.get("Flow Duration")
+    fpk, bpk = idx.get("Total Fwd Packets"), idx.get("Total Backward Packets")
+    fby, bby = idx.get("Total Length of Fwd Packets"), idx.get("Total Length of Bwd Packets")
     now = time.time()
+    PROTO = {6: "TCP", 17: "UDP", 1: "ICMP"}
     cell = lambda row, i: row[i] if i is not None else None  # noqa: E731
+    num = lambda row, i: float(row[i]) if i is not None and row[i] is not None else 0.0  # noqa: E731
     pipe = r.pipeline()
     for row in frame["data"]:
         pipe.xadd(bus.CONNECTIONS, {
             "record_id": str(cell(row, ri)) if ri is not None else "",
             "src": _endpoint(cell(row, si), cell(row, spi)),
             "dst": _endpoint(cell(row, di), cell(row, dpi)),
+            "proto": PROTO.get(int(num(row, proto_i)), str(cell(row, proto_i) or "")),
+            "packets": int(num(row, fpk) + num(row, bpk)),
+            "bytes": int(num(row, fby) + num(row, bby)),
+            "duration": repr(round(num(row, dur_i) / 1e6, 2)),  # microseconds -> seconds
             "source": source, "time": repr(float(cell(row, ti)) if ti is not None else now),
         }, maxlen=bus.CONNECTIONS_KEPT, approximate=True)
     pipe.execute()

@@ -10,6 +10,7 @@ import { clock, count } from "@/lib/format";
 type Connection = {
   id: string; record_id: string; src: string | null; dst: string | null;
   source: string | null; time: number | null; flagged: boolean;
+  proto: string | null; packets: number | null; bytes: number | null; duration: number | null;
 };
 type Feed = { feed_on: boolean; total_window: number; connections: Connection[] };
 
@@ -106,12 +107,20 @@ export default function TrafficPage() {
               { key: "time", label: "Time" },
               { key: "from", label: "From" },
               { key: "to", label: "To" },
+              { key: "proto", label: "Proto" },
+              { key: "packets", label: "Packets", align: "right" },
+              { key: "bytes", label: "Bytes", align: "right" },
+              { key: "duration", label: "Duration", align: "right" },
               { key: "verdict", label: "Verdict" },
             ]}
             rows={feed.connections.map((c) => ({
               time: c.time ? clock(c.time) : "—",
               from: c.src ?? "—",
               to: c.dst ?? "—",
+              proto: c.proto ?? "—",
+              packets: c.packets == null ? "—" : count(c.packets),
+              bytes: c.bytes == null ? "—" : count(c.bytes),
+              duration: c.duration == null ? "—" : `${c.duration.toFixed(1)}s`,
               verdict: c.flagged ? <StatusBadge tone="critical" label="flagged" /> : <span className="text-muted">normal</span>,
             }))}
           />

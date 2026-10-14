@@ -59,9 +59,11 @@ class ConnectionsView(APIView):
             import io
             buf = io.StringIO()
             w = csv.writer(buf)
-            w.writerow(["time", "record_id", "source", "src", "dst", "verdict"])
+            w.writerow(["time", "record_id", "source", "src", "dst", "protocol",
+                        "packets", "bytes", "duration_s", "verdict"])
             for c in data["connections"]:
-                w.writerow([c["time"], c["record_id"], c["source"], c["src"], c["dst"],
+                w.writerow([c["time"], c["record_id"], c["source"], c["src"], c["dst"], c.get("proto"),
+                            c.get("packets"), c.get("bytes"), c.get("duration"),
                             "attack" if c["flagged"] else "normal"])
             resp = Response(buf.getvalue(), content_type="text/csv")
             resp["Content-Disposition"] = 'attachment; filename="connections.csv"'
