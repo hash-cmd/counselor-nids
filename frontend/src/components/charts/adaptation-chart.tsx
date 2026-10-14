@@ -115,6 +115,7 @@ function Comparison({ exp }: { exp: Adaptation }) {
           { key: "detection", label: "Attacks caught", align: "right" },
           { key: "false_alarms", label: "False alarms", align: "right" },
           { key: "balanced", label: "Balanced", align: "right" },
+          { key: "mcc", label: "MCC", align: "right" },
           { key: "mcnemar", label: "vs deployed (McNemar)" },
         ]}
         rows={rows.map(([key, s]) => {
@@ -124,6 +125,7 @@ function Comparison({ exp }: { exp: Adaptation }) {
             detection: withInterval(s.detection_rate, s.detection_rate_low, s.detection_rate_high),
             false_alarms: withInterval(s.false_alarm_rate, s.false_alarm_rate_low, s.false_alarm_rate_high),
             balanced: percent(s.balanced, 1),
+            mcc: s.mcc == null ? "—" : s.mcc.toFixed(3),
             mcnemar: m ? (
               <span className="flex items-center gap-2 whitespace-nowrap">
                 {count(m.b)} vs {count(m.c)} · {pValue(m.p_value)}
@@ -172,6 +174,11 @@ function Agreement({ exp }: { exp: Adaptation }) {
               { kind: "Normal (Snort silent, all detectors sure)", n: count(rows[0].normal_labels), right: interval(rows[0].normal_precision, rows[0].normal_interval) },
             ]}
           />
+        )}
+        {rows.length > 0 && rows[0].kappa != null && (
+          <p className="mt-2 text-xs text-muted">
+            Snort–AI agreement beyond chance (Cohen&apos;s κ): <span className="font-semibold text-ink-2">{rows[0].kappa.toFixed(3)}</span>
+          </p>
         )}
       </Card>
       <Card title="How much each Snort rule ended up trusted"

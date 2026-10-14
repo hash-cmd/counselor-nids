@@ -124,7 +124,8 @@ def adaptation() -> list[dict]:
         def row(r) -> dict:
             return {k: _clean(float(r[k])) for k in
                     ("detection_rate", "detection_rate_low", "detection_rate_high", "false_alarm_rate",
-                     "false_alarm_rate_low", "false_alarm_rate_high", "balanced") if k in r} | {
+                     "false_alarm_rate_low", "false_alarm_rate_high", "balanced",
+                     "precision", "recall", "f1", "mcc", "pr_auc", "conflict_rate") if k in r} | {
                 "labels": {lbl: _clean(float(r[f"label:{lbl}"])) for lbl in per_label}}
 
         final = {name: row(r) for name, r in summary.get("final", {}).items()}
@@ -133,13 +134,15 @@ def adaptation() -> list[dict]:
         if labels is not None:
             sums = labels.groupby("config")[["attack_labels", "attack_labels_right", "normal_labels",
                                              "normal_labels_right"]].sum()
+            kappa = labels.groupby("config")["snort_ai_kappa"].mean().to_dict() if "snort_ai_kappa" in labels else {}
             for config, s in sums.iterrows():
                 agreement.append({
                     "config": config, "attack_labels": int(s.attack_labels), "normal_labels": int(s.normal_labels),
                     "attack_precision": _clean(s.attack_labels_right / s.attack_labels) if s.attack_labels else None,
                     "normal_precision": _clean(s.normal_labels_right / s.normal_labels) if s.normal_labels else None,
                     "attack_interval": _wilson(s.attack_labels_right, s.attack_labels),
-                    "normal_interval": _wilson(s.normal_labels_right, s.normal_labels)})
+                    "normal_interval": _wilson(s.normal_labels_right, s.normal_labels),
+                    "kappa": _clean(float(kappa[config])) if config in kappa else None})
         names = rule_names()
         rules = [{"rule": rule, "msg": names.get(rule, ""), **stats}
                  for rule, stats in trust.get("full", next(iter(v for v in trust.values() if v), {})).items()]

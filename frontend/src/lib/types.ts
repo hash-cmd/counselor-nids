@@ -113,6 +113,8 @@ export type AdaptScore = {
   detection_rate: number; detection_rate_low: number; detection_rate_high: number;
   false_alarm_rate: number; false_alarm_rate_low: number; false_alarm_rate_high: number;
   balanced: number | null; labels: Record<string, number | null>;
+  // added for the imbalance-robust metrics; older experiment runs omit them
+  precision?: number; recall?: number; f1?: number; mcc?: number; pr_auc?: number; conflict_rate?: number;
 };
 
 export type SnortTrustRow = { rule: string; msg: string; agree: number; disagree: number; trust: number };
@@ -124,7 +126,8 @@ export type Adaptation = {
   baselines: Record<string, AdaptScore>;
   mcnemar: { system_a: string; system_b: string; b: number; c: number; test: string; statistic: number; p_value: number }[];
   agreement: { config: string; attack_labels: number; normal_labels: number; attack_precision: number | null;
-               normal_precision: number | null; attack_interval: Interval; normal_interval: Interval }[];
+               normal_precision: number | null; attack_interval: Interval; normal_interval: Interval;
+               kappa?: number | null }[];
   rule_trust: SnortTrustRow[];
 };
 
