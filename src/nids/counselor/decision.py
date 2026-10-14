@@ -89,6 +89,19 @@ def fuse_log_odds(probs: list[np.ndarray], weights: list[float], prior: float = 
     return 1.0 / (1.0 + np.exp(-acc))
 
 
+def fuse_noisy_or(probs: list[np.ndarray], weights: list[float] | None = None) -> np.ndarray:
+    """Noisy-OR fusion: P(attack) = 1 - Π(1 - wᵢ pᵢ). The right combination when each source
+    detects a DIFFERENT attack family (any one firing means an attack) — as the specialist
+    detectors do — unlike log-odds pooling, which suits redundant sources predicting the same
+    event and here would let one specialist's "not my family" cancel another's detection."""
+    probs = [np.clip(np.asarray(p, dtype=float), 0.0, 1.0) for p in probs]
+    weights = weights if weights is not None else [1.0] * len(probs)
+    keep = np.ones_like(probs[0])
+    for p, w in zip(probs, weights):
+        keep = keep * (1.0 - np.asarray(w, dtype=float) * p)
+    return 1.0 - keep
+
+
 def cost_threshold(c_fp: float, c_fn: float) -> float:
     """The probability threshold that minimises expected cost: flag when p > C_FP/(C_FP+C_FN).
     Equal costs give 0.5; a costlier miss (C_FN large) lowers the threshold, catching more."""

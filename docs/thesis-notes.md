@@ -234,13 +234,34 @@ is what the forgetting gate checks, and **explanation coverage** comes from `exp
 - **MCC** `(/(TP·TN - FP·FN) / sqrt((TP+FP)(TP+FN)(TN+FP)(TN+FN)))` and **PR-AUC** (average
   precision) are reported because accuracy misleads on imbalanced traffic.
 
+## 4d. The formal decision layer — built, and what testing it showed
+
+`src/nids/counselor/decision.py` now implements the full alternative decision layer as tested
+units, and `scripts/live_detectors/decision_layer.py` runs it end-to-end:
+
+- **Calibration** (Platt / isotonic) — Brier improves markedly per detector (e.g. live_access
+  0.52 → 0.09 against its own family). Done.
+- **Detector trust** — Beta reputation for the AI counselors, online, with decay
+  (`DetectorTrust`); reflects reliability (live_bot 1.0, live_dos 0.90, live_access 0.45). Done.
+- **Fusion** — a real design finding: **log-odds pooling is wrong for this architecture.** The
+  detectors are *specialists* (disjoint attack families), not redundant predictors of "attack",
+  so log-odds averaging lets one specialist's "not my family" cancel another's detection (it
+  flagged everything). The correct fusion is **noisy-OR**, `P = 1 − Π(1 − wᵢpᵢ)` (`fuse_noisy_or`).
+- **Cost-sensitive threshold** `p* = C_FP/(C_FP+C_FN)` — done.
+- **Importance weighting** and **Page-Hinkley drift** — done, demonstrated in `--stream`.
+
+**Result (the honest ablation):** with correct noisy-OR fusion the decision layer catches
+slightly *more* attacks (99.8% vs 96.8%) but at a large false-alarm cost (29.7% vs 0.02%), so
+MCC falls. Like the detector-trust ablation, the sophisticated alternative **underperforms** the
+deployed counselor voting with suppress-fallback — which justifies the existing design. Present
+the decision layer as an evaluated alternative, not the main path, and report this trade-off.
+
 Not adopted, with reasons to state:
 - **Elastic Weight Consolidation** is a gradient/neural-net method (Fisher information over
   parameters); the detectors are tree ensembles + naive Bayes, so EWC does not apply — the
   **gate-based** forgetting prevention is the correct tool for this model family.
-- **Log-odds pooling / Platt-isotonic calibration / cost-based threshold** require moving from
-  the counselor's votes to calibrated probabilities, which changes the base architecture
-  (Quincozes). Present as an alternative design / future work, not the main path.
+- **Log-odds pooling** specifically: tested and found unsound for disjoint specialists (above);
+  kept in the module as a general primitive but not used for the detectors.
 
 ---
 
