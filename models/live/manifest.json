@@ -1,5 +1,5 @@
 {
-  "promoted_at": "2026-10-08T20:06:12+00:00",
+  "promoted_at": "2026-10-14T16:05:05+00:00",
   "knowledge": {
     "live_dos": [
       "DoS-GoldenEye",
@@ -19,40 +19,52 @@
     ]
   },
   "metrics": {
-    "accuracy": 0.9921459171751266,
-    "detection_rate": 0.9912007019938576,
-    "false_alarm_rate": 0.0003852080123266564
+    "accuracy": 0.9877080801873934,
+    "detection_rate": 0.9516968428714403,
+    "false_alarm_rate": 3.715446348954721e-05,
+    "precision": 0.9998852915029681,
+    "recall": 0.9516968428714403,
+    "f1": 0.9751961328155956,
+    "mcc": 0.9675535098473074,
+    "detection_rate_low": 0.9504134257725294,
+    "detection_rate_high": 0.9529486866071004,
+    "false_alarm_rate_low": 2.12548285522067e-05,
+    "false_alarm_rate_high": 6.49470182718585e-05
   },
   "by_label": {
-    "DoS-SlowHTTPTest": 1.0,
-    "DoS-Hulk": 0.9994485294117647,
-    "Benign": 0.0003852080123266564,
+    "Benign": 3.715446348954721e-05,
+    "PortScan": 0.9891959406713505,
+    "DoS-Hulk": 0.8421695372046996,
+    "DoS-SlowHTTPTest": 0.995431518002533,
+    "DDoS": 0.9917654301985532,
     "FTP-BruteForce": 1.0,
-    "Bot": 0.9982517482517482,
-    "DoS-GoldenEye": 0.9988252569750367,
-    "DoS-Slowloris": 0.84533702677747,
-    "SSH-Bruteforce": 0.9901477832512315,
-    "Web-attack": 0.9285714285714286
+    "DoS-GoldenEye": 0.993920972644377,
+    "Bot": 0.9843924191750278,
+    "DoS-Slowloris": 0.7636418450406994,
+    "SSH-Bruteforce": 0.9855832241153342,
+    "Web-attack": 0.7461368653421634
   },
   "test_flows": {
-    "DoS-SlowHTTPTest": 21110,
-    "DoS-Hulk": 5440,
-    "Benign": 5192,
-    "FTP-BruteForce": 4416,
-    "Bot": 3432,
-    "DoS-GoldenEye": 3405,
-    "DoS-Slowloris": 2166,
-    "SSH-Bruteforce": 1015,
-    "Web-attack": 42
+    "Benign": 322976,
+    "PortScan": 32025,
+    "DoS-Hulk": 23747,
+    "DoS-SlowHTTPTest": 22108,
+    "DDoS": 12994,
+    "FTP-BruteForce": 5217,
+    "DoS-GoldenEye": 4935,
+    "Bot": 3588,
+    "DoS-Slowloris": 3317,
+    "SSH-Bruteforce": 1526,
+    "Web-attack": 453
   },
   "labs": [
     "2018",
     "2017"
   ],
   "sha256": {
-    "live_access.joblib": "15a99237836dc4f4852cc7a318305037461cf5b96717306136774b6d0fe59df6",
-    "live_bot.joblib": "9fe43995b91a3f4e5bda508b999d22c936c2b422a7ab271057a2cedeb6844a33",
-    "live_dos.joblib": "4218f4afb37e9f1e26e747454637611a673c14c34d396968376fdcbb3522a051"
+    "live_access.joblib": "606cbe517638c36c4ef513482262cee2708dcd942e57e8e59ad4ee900536d6cb",
+    "live_bot.joblib": "53ad8f60417b17a291bbc64ea4e2d07d21c92b2a9bc17b738e509009c0e57af4",
+    "live_dos.joblib": "cb371861483e8529350a056cca3d3f9f94cab8e3dab5426ca2677abaae9f3585"
   },
   "args": {
     "train_share": 0.8,
@@ -65,9 +77,7 @@
     "train_labs": null,
     "test_labs": null,
     "max_per_label": null,
-    "only": [
-      "live_dos"
-    ],
+    "only": null,
     "max_drop": 0.02,
     "max_fa_rise": 0.0005,
     "force": false,

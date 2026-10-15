@@ -41,3 +41,11 @@ backend/.env
 
 # local tool settings
 .claude/settings.local.json
+
+# Thesis / paper write-up — kept local, out of the product-only repo
+/docs/Chapter*
+/docs/chapter*
+/docs/A Counsellor base architecture-*
+/docs/MSc_Thesis_Structure*
+/docs/Comparison.docx
+/docs/figures/
