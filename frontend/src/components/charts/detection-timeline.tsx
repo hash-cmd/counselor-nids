@@ -21,7 +21,7 @@ export function DetectionTimeline({ points, snort, className }: { points: RatePo
   const series = SERIES.filter((s) => s.key === "ml" || snort);
 
   return (
-    <Card className={className} title="Suspicious activity over time" tag="Fig.1 · Timeline" subtitle="Connections flagged each second, over the last three minutes. Spikes mean an attack is happening." actions={toggle}>
+    <Card className={className} title="Suspicious activity over time" subtitle="Connections flagged each second, over the last three minutes. Spikes mean an attack is happening." actions={toggle}>
       {points.length < 2 ? (
         <p className="flex min-h-56 flex-1 items-center justify-center text-sm text-muted">Nothing yet. The chart fills in once traffic is being checked.</p>
       ) : view === "table" ? (

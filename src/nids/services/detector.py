@@ -21,8 +21,10 @@ import redis
 
 from ..counselor import CounselorNetwork
 from ..detector.detector import Detector
+from ..detector.novelty import novelty_scores
 from . import bus
 from . import feedback
+from .novelty_live import load_taus
 from .snort_counselor import RedisSnortCounselor, wait_for_snort
 
 
@@ -121,22 +123,27 @@ def _endpoints(frame: pd.DataFrame) -> tuple[pd.Series | None, pd.Series | None]
     return None, None
 
 
-def record(r: redis.Redis, name: str, frame: pd.DataFrame, final: pd.DataFrame) -> None:
-    """Update counters, breakdowns and the alerts stream."""
+def record(r: redis.Redis, name: str, frame: pd.DataFrame, final: pd.DataFrame, unseen=None) -> None:
+    """Update counters, breakdowns and the alerts stream. ``unseen``: the rows the detector judged
+    normal but whose traffic is strongly novel (far from everything it learned) — emitted as
+    possible-unseen-attack alerts so unfamiliar traffic is never silently accepted."""
+    unseen = unseen if unseen is not None else final.index[:0]
     resolution = final["resolution"].value_counts()
     attack = final["prediction"].to_numpy(dtype=bool)
     counters = {
         "samples": len(final), "flagged_attack": int(attack.sum()),
         "conflicts": int(final["conflict"].sum()),
+        "possible_unseen": int(len(unseen)),
         "advice:snort": int((final["counselor"] == "snort").sum()) if "counselor" in final else 0,
         **{f"resolution:{k}": int(v) for k, v in resolution.items()},
     }
     src, dst = _endpoints(frame)
     flagged_rows = final.index[attack]
     flagged_ids = frame.loc[flagged_rows, "record_id"].astype(int).tolist()
-    if len(flagged_rows):  # so an analyst's verdict on these alarms can be learned from later
+    store_rows = flagged_rows.union(unseen)
+    if len(store_rows):  # keep their flows so a verdict or explanation is available later
         keep = r.pipeline()
-        feedback.remember_flows(keep, frame, flagged_rows)
+        feedback.remember_flows(keep, frame, store_rows)
         keep.execute()
 
     # Flows flagged by any detector, counted once: breakdowns grow only for flows
@@ -169,6 +176,17 @@ def record(r: redis.Redis, name: str, frame: pd.DataFrame, final: pd.DataFrame) 
         if dst is not None:
             entry["dst"] = dst.at[row]
         pipe.xadd(bus.ALERTS, entry, maxlen=bus.ALERTS_KEPT, approximate=True)
+    # possible unseen attacks: the detector saw nothing it recognised, but the traffic is unlike
+    # anything it learned, so it is raised rather than silently accepted as normal
+    for row in unseen:
+        entry = {"detector": name, "record_id": int(frame.at[row, "record_id"]),
+                 "timestamp": float(final.loc[row].timestamp), "time": now,
+                 "resolution": "possible_unseen", "counselor": "", "novel": "1"}
+        if src is not None:
+            entry["src"] = src.at[row]
+        if dst is not None:
+            entry["dst"] = dst.at[row]
+        pipe.xadd(bus.ALERTS, entry, maxlen=bus.ALERTS_KEPT, approximate=True)
     pipe.execute()
 
 
@@ -191,6 +209,8 @@ def run(
     installed there (learn_feedback.py), without a restart."""
     state = State(detector=detector)
     r.hset(bus.SUBSCRIPTIONS, detector.name, json.dumps(sources))
+    # strict novelty threshold for raising "possible unseen attack" alerts on normal-looking traffic
+    tau_alert = load_taus(model_path.parent).get(detector.name, {}).get("tau_alert") if model_path else None
     threading.Thread(target=serve_advice, args=(r, detector.name, state, advice_wait), daemon=True).start()
     seen = model_path.stat().st_mtime if model_path else 0.0
     next_check = time.monotonic() + RELOAD_EVERY
@@ -215,7 +235,7 @@ def run(
                         continue
                     frame = bus.decode_frame(bus.field(fields, "frame"))
                     process(r, detector, frame, state, min_accuracy, window, cross_check, suppress_fallback,
-                            snort_counselor, learn=bool(retrain_every))
+                            snort_counselor, learn=bool(retrain_every), tau_alert=tau_alert)
                     detector.trim_history(max_history)
                     pending = sum(len(y) for _, y in detector.new_signatures)
                     if retrain_every and pending >= retrain_every:
@@ -230,7 +250,7 @@ def run(
 
 
 def process(r, detector, frame, state, min_accuracy, window, cross_check, suppress_fallback=False,
-            snort_counselor=False, learn=False) -> pd.DataFrame:
+            snort_counselor=False, learn=False, tau_alert=None) -> pd.DataFrame:
     """Classify a batch and resolve its conflicts with the counselors. ``snort_counselor``:
     Snort advises on conflicts and a trusted "attack" advice wins (counselor/network.py).
     ``learn``: keep advised samples for retraining — only when the service retrains, or
@@ -248,7 +268,17 @@ def process(r, detector, frame, state, min_accuracy, window, cross_check, suppre
                                advisors=[RedisSnortCounselor(r)] if snort_counselor else [],
                                attack_advice_wins=snort_counselor, learn_from_advice=learn)
     final = network.resolve(detector, frame, results)
-    record(r, detector.name, frame, final)
+    # possible unseen attacks: connections this detector judged normal but whose traffic is far
+    # from anything it learned (novelty above the strict alert threshold)
+    unseen = final.index[:0]
+    if tau_alert:
+        try:
+            scores = novelty_scores(detector, frame)
+            normal = ~final["prediction"].to_numpy(dtype=bool)
+            unseen = final.index[normal & (scores > tau_alert)]
+        except Exception:  # noqa: BLE001 - novelty is best-effort; never block detection
+            unseen = final.index[:0]
+    record(r, detector.name, frame, final, unseen)
     # how far this detector has analysed, so the Snort correlator knows when to ask
     r.set(f"{bus.PREFIX}:watermark:{detector.name}", state.watermark)
     return final

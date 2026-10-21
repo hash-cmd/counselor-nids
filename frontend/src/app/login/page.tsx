@@ -37,7 +37,7 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4">
-      <form onSubmit={submit} className="w-full max-w-sm rounded-xl border border-line bg-surface p-6">
+      <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-line bg-surface shadow-[var(--shadow)] p-6">
         <h1 className="text-lg font-semibold text-ink">Counselor NIDS</h1>
         <p className="mb-6 text-sm text-ink-2">Sign in to see whether anything is attacking your network.</p>
         <label className="mb-3 block text-sm text-ink-2">

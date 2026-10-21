@@ -44,7 +44,7 @@ function Curve({ exp }: { exp: Adaptation }) {
   return (
     <Card
       title="Balanced score while adapting"
-      tag="Fig · Adaptation"
+
       subtitle={`After each of the ${exp.chunks} chunks of ${exp.target} traffic the detectors watched. Balanced score = average of every attack type's detection rate and (1 − false-alarm rate); higher is better.`}
       actions={toggle}
     >

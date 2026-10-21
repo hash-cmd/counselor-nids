@@ -141,7 +141,7 @@ export function NotificationBell() {
       {open && (
         <>
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} aria-hidden />
-          <div className="absolute right-0 z-30 mt-2 w-80 rounded-xl border border-line bg-surface p-3 shadow-lg">
+          <div className="absolute right-0 z-30 mt-2 w-80 rounded-2xl border border-line bg-surface shadow-[var(--shadow-raised)] p-3 shadow-lg">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-sm font-semibold text-ink">High-severity alerts</span>
               <span className="text-xs text-muted">{count} active</span>

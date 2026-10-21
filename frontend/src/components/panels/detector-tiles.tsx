@@ -24,7 +24,7 @@ export function DetectorTiles({ detectors }: { detectors: Record<string, Detecto
   if (names.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-line bg-surface p-8 text-center text-sm text-ink-2">
-        No detectors are running. Start live monitoring (see the Overview), or run a test on the Test page.
+        No detectors are running. Start live monitoring (see the Overview).
       </div>
     );
   }
@@ -34,7 +34,7 @@ export function DetectorTiles({ detectors }: { detectors: Record<string, Detecto
         const s = detectors[name];
         const knows = detectorKnows(name);
         return (
-          <section key={name} className="rounded-xl border border-line bg-surface p-5">
+          <section key={name} className="rounded-2xl border border-line bg-surface shadow-[var(--shadow)] p-5">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
               <span className="inline-block size-2.5 rounded-sm" style={{ background: seriesColor(name, names) }} />
               {detectorName(name)}

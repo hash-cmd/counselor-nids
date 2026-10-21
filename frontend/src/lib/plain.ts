@@ -163,6 +163,7 @@ export const RESOLUTIONS: Record<string, { label: string; meaning: string }> = {
   advice: { label: "Asked a colleague", meaning: "its checks disagreed, so it took advice from another detector or the rule checker" },
   cross_check: { label: "Double-checked", meaning: "it thought the traffic was safe, but another detector recognised an attack" },
   fallback: { label: "Best guess", meaning: "its checks disagreed and no other detector could help" },
+  possible_unseen: { label: "Possible unknown attack", meaning: "the AI did not recognise this as an attack, but it is unlike any traffic it has learned — possibly something new or unknown" },
 };
 
 export const resolutionLabel = (key: string) => RESOLUTIONS[key]?.label ?? key;

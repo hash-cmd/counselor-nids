@@ -25,8 +25,7 @@ const NAV: { heading: string; items: NavItem[] }[] = [
   {
     heading: "Evaluation",
     items: [
-      { href: "/test", label: "Test with recordings", hint: "Replay known attacks to check detection", icon: <IconPlay /> },
-      { href: "/results", label: "Test results", hint: "How well it scores in tests", icon: <IconChart /> },
+      { href: "/results", label: "Detection performance", hint: "How well it detects attacks", icon: <IconChart /> },
     ],
   },
 ];
@@ -81,8 +80,10 @@ function Sidebar({ pathname, username, collapsed, onNavigate, logout }: {
                       onClick={onNavigate}
                       aria-current={active ? "page" : undefined}
                       title={collapsed ? item.label : item.hint}
-                      className={`flex items-center gap-3 rounded-lg py-2 text-sm ${collapsed ? "justify-center px-0" : "px-3"} ${
-                        active ? "bg-wash font-semibold text-ink" : "text-ink-2 hover:bg-wash hover:text-ink"
+                      className={`flex items-center gap-3 rounded-lg py-2 text-sm transition-colors ${collapsed ? "justify-center px-0" : "px-3"} ${
+                        active
+                          ? "bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] font-semibold text-accent"
+                          : "text-ink-2 hover:bg-wash hover:text-ink"
                       }`}
                     >
                       <span className={active ? "text-accent" : "text-muted"}>{item.icon}</span>
@@ -222,9 +223,6 @@ function IconChip() {
 }
 function IconList() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>;
-}
-function IconPlay() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z"/></svg>;
 }
 function IconChart() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>;

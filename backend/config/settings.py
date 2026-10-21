@@ -10,6 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Repository root: holds models/, data/pcap/ and results/.
 NIDS_ROOT = Path(config("NIDS_ROOT", default=str(BASE_DIR.parent)))
 NIDS_REDIS_URL = config("NIDS_REDIS_URL", default="redis://localhost:6379/0")
+NVD_API_KEY = config("NVD_API_KEY", default="")  # online NVD lookups for CVE enrichment of Snort alerts
 
 DEBUG = config("DJANGO_DEBUG", default=True, cast=bool)
 _DEV_KEY = "dev-only-insecure-key-change-me-in-production"

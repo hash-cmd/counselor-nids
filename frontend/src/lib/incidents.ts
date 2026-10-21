@@ -29,7 +29,15 @@ export type Incident = {
     agreement: SnortAlert["agreement"];
     ml_verdict: string | null;
   } | null;
+  /** how familiar this flagged connection is (novelty score); null if its flow is no longer stored */
+  novelty?: { ratio: number; novel: boolean; label: "familiar" | "unfamiliar"; nearest_detector: string } | null;
 };
+
+/** A connection the AI judged *normal* but far outside anything it has learned — surfaced as a
+ *  possible new/unknown attack (every ML alert on it is the "possible_unseen" kind), never a
+ *  confirmed attack. */
+export const isPossibleUnseen = (i: Incident): boolean =>
+  !!i.ml && i.ml.resolutions.length > 0 && i.ml.resolutions.every((r) => r === "possible_unseen");
 
 export const SOURCE_LABELS: Record<IncidentSource, string> = {
   both: "AI + rule checker",

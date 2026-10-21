@@ -16,6 +16,21 @@ const AGREEMENT = {
   unmatched: { tone: "neutral", label: "AI didn't see it" },
 } as const;
 
+// Colour the severity dot (paired with the CVE id + score, so never colour alone).
+function cveColor(severity: string | null): string {
+  switch ((severity ?? "").toUpperCase()) {
+    case "CRITICAL":
+    case "HIGH":
+      return "var(--status-critical)";
+    case "MEDIUM":
+      return "var(--status-warning)";
+    case "LOW":
+      return "var(--status-good)";
+    default:
+      return "var(--ink-muted)";
+  }
+}
+
 export function SnortAlertsTable({ alerts }: { alerts: SnortAlert[] }) {
   const [filter, setFilter] = useState<"all" | SnortAlert["agreement"]>("all");
   const shown = useMemo(() => (filter === "all" ? alerts : alerts.filter((a) => a.agreement === filter)), [alerts, filter]);
@@ -66,6 +81,26 @@ export function SnortAlertsTable({ alerts }: { alerts: SnortAlert[] }) {
                     <span className="ml-1.5 text-muted" title="Snort rule id">
                       {a.gid}:{a.sid}
                     </span>
+                    {a.cves && a.cves.length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {a.cves.map((c) => (
+                          <a
+                            key={c.id}
+                            href={c.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={c.description || `${c.id}${c.severity ? ` — ${c.severity}` : ""}`}
+                            className="inline-flex items-center gap-1 rounded-full border border-line px-1.5 py-0.5 text-[10px] text-ink-2 hover:bg-wash"
+                          >
+                            <span aria-hidden style={{ color: cveColor(c.severity) }}>
+                              ●
+                            </span>
+                            {c.id}
+                            {c.score != null && <span className="text-muted">{c.score}</span>}
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   <td className="tabular px-3 py-1.5 text-ink-2">
                     {a.src} → {a.dst}

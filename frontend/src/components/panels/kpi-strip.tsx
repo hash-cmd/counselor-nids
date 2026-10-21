@@ -3,16 +3,15 @@ import type { LiveState } from "@/lib/live-feed";
 import type { Incident } from "@/lib/incidents";
 import { severityCounts, TIER_META, type Tier } from "@/lib/severity";
 
-function Kpi({ n, label, value, unit, hint }: { n: string; label: string; value: string; unit?: string; hint?: string }) {
+function Kpi({ label, value, unit, hint }: { label: string; value: string; unit?: string; hint?: string }) {
   return (
-    <div className="relative min-w-0 border-t border-line px-4 py-4 first:pl-0">
-      <span className="eyebrow absolute right-3 top-4 text-[var(--accent)]">{n}</span>
+    <div className="min-w-0 px-4 py-4 sm:border-l sm:border-line sm:first:border-l-0 sm:first:pl-0">
       <p className="eyebrow">{label}</p>
-      <p className="figure mt-2 text-3xl font-semibold text-ink">
+      <p className="figure mt-2 text-[28px] font-semibold leading-none text-ink">
         {value}
-        {unit && <span className="ml-0.5 text-base text-muted">{unit}</span>}
+        {unit && <span className="ml-0.5 text-base font-medium text-muted">{unit}</span>}
       </p>
-      {hint && <p className="eyebrow mt-1.5 normal-case tracking-normal">{hint}</p>}
+      {hint && <p className="mt-2 text-xs leading-snug text-muted">{hint}</p>}
     </div>
   );
 }
@@ -87,11 +86,11 @@ export function KpiStrip({ live, incidents }: { live: LiveState; incidents: Inci
   ];
 
   return (
-    <section className="rounded-xl border border-line bg-surface p-5">
+    <section className="rounded-2xl border border-line bg-surface p-5 shadow-[var(--shadow)]">
       <Verdict checked={flows} suspicious={suspicious} running={live.activity === "running"} incidents={incidents} />
-      <div className="mt-2 grid grid-cols-2 xl:grid-cols-4">
-        {cells.map((c, i) => (
-          <Kpi key={c.label} n={String(i + 1).padStart(2, "0")} label={c.label} value={c.value} unit={c.unit} hint={c.hint} />
+      <div className="mt-4 grid grid-cols-2 border-t border-line pt-2 xl:grid-cols-4">
+        {cells.map((c) => (
+          <Kpi key={c.label} label={c.label} value={c.value} unit={c.unit} hint={c.hint} />
         ))}
       </div>
     </section>

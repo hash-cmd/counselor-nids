@@ -38,7 +38,7 @@ export function BlockDialog({ ip, onClose }: { ip: string; onClose: () => void }
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
-      <div className="relative w-full max-w-lg rounded-xl border border-line bg-surface p-5 shadow-xl" role="dialog" aria-label={`Block ${ip}`}>
+      <div className="relative w-full max-w-lg rounded-2xl border border-line bg-surface shadow-[var(--shadow-raised)] p-5 shadow-xl" role="dialog" aria-label={`Block ${ip}`}>
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-ink">Block {ip}</h2>

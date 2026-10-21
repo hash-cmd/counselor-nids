@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 
 import { clock, count } from "@/lib/format";
@@ -75,32 +74,10 @@ export function Health({ health }: { health: ServiceHealth[] }) {
 export function LiveStatus({ live }: { live: LiveState }) {
   const checked = Math.max(0, ...Object.values(live.detectors).map((d) => d.samples));
   const flagged = live.breakdown?.ml_flagged_flows ?? 0;
-  const replay = live.replay;
-
-  // A test replay is running: the dashboard is showing the recording, not the network.
-  if (replay.state === "running") {
-    return (
-      <section className="rounded-xl border border-line bg-surface p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="eyebrow">Live monitoring</p>
-            <h2 className="mt-1 text-base font-semibold text-ink">Paused — a test recording is playing</h2>
-            <p className="mt-1 text-sm text-ink-2">
-              The numbers below come from <span className="figure">{replay.replay}</span>, not your network.
-            </p>
-          </div>
-          <Link href="/test" className="rounded-md border border-line px-3 py-1.5 text-sm text-ink hover:bg-wash">
-            Go to the test →
-          </Link>
-        </div>
-      </section>
-    );
-  }
-
   // Live capture on a network interface.
   if (live.live) {
     return (
-      <section className="rounded-xl border border-line bg-surface p-5">
+      <section className="rounded-2xl border border-line bg-surface p-5 shadow-[var(--shadow)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="eyebrow">Live monitoring</p>
@@ -133,9 +110,8 @@ export function LiveStatus({ live }: { live: LiveState }) {
   }
 
   // Nothing is being watched.
-  const lastTest = replay.state === "idle" ? null : replay.replay;
   return (
-    <section className="rounded-xl border border-line bg-surface p-5">
+    <section className="rounded-2xl border border-line bg-surface p-5 shadow-[var(--shadow)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="eyebrow">Live monitoring</p>
@@ -151,11 +127,6 @@ export function LiveStatus({ live }: { live: LiveState }) {
       <div className="mt-4">
         <CopyCommand command={START} />
       </div>
-      {lastTest && (
-        <p className="mt-3 text-xs text-muted">
-          The numbers below are from the last test ({lastTest}). They reset when live monitoring starts.
-        </p>
-      )}
     </section>
   );
 }

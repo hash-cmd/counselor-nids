@@ -118,7 +118,7 @@ export default function ResultsPage() {
         <div className="grid gap-4 xl:grid-cols-3">
           <div className="xl:col-span-2">
             <LabelChart
-              tag="Fig · Test"
+
               title="Recorded real attacks they had never seen"
               subtitle="Share of each kind of traffic flagged as an attack. High is good, except for normal traffic (false alarms). Alone, each detector only catches its own specialty, so its overall score is low; the team is what runs."
               table={results.by_label.live}

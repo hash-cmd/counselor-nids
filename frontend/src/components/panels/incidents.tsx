@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { clock, count } from "@/lib/format";
 import { useFeedback, type Verdict } from "@/lib/feedback";
-import { type Incident, type IncidentSource, SOURCE_LABELS } from "@/lib/incidents";
+import { type Incident, type IncidentSource, isPossibleUnseen, SOURCE_LABELS } from "@/lib/incidents";
 import { ATTACK_INFO, attackCategory, attackName, bySpecificity, detectorClue, detectorName, resolutionLabel, RESOLUTIONS, ruleName } from "@/lib/plain";
 
 import { severityScore, tierOf } from "@/lib/severity";
@@ -29,8 +29,14 @@ export function SourceTag({ source }: { source: Incident["source"] }) {
   );
 }
 
+/** Plain words for a connection the AI judged normal but unlike anything it has learned —
+ *  the "possible unseen attack" signal, written for a non-expert. */
+const UNSEEN_WHAT =
+  "The AI watched how this connection behaved — its size, timing and speed — and did not recognise it as any attack it was taught. But it also looks nothing like the normal traffic it knows. That combination is exactly what a brand-new or unknown attack would look like, so it is surfaced here to be checked rather than quietly let through.";
+
 function what(incident: Incident): string {
   if (incident.snort) return incident.snort.rules.map(ruleName).join(" · ");
+  if (isPossibleUnseen(incident)) return "Possible new or unknown attack";
   if (incident.label) return attackName(incident.label);
   const origins = bySpecificity(incident.ml?.origins ?? []);
   if (!origins.length) return "Behaves like an attack";
@@ -49,6 +55,7 @@ function clueText(incident: Incident): string {
 /** A real, plain-English headline for the alert: the kind of attack it looks like. */
 function headline(incident: Incident): string {
   if (incident.label && incident.label.toLowerCase() === "benign") return "Normal traffic — this is a false alarm";
+  if (isPossibleUnseen(incident) && !incident.snort) return "Possible new or unknown attack";
   return ATTACK_INFO[attackCategory(clueText(incident))].title;
 }
 
@@ -90,7 +97,9 @@ function evidence(incident: Incident): string[] {
     facts.push(`The rule checker matched it against its library of known attacks: ${incident.snort.rules.map(ruleName).join("; ")}.`);
   }
   if (incident.ml) {
-    facts.push(`The AI didn't read the contents — it judged how the connection behaved (its size, timing and speed) and found it matched attacks it has learned.`);
+    facts.push(isPossibleUnseen(incident)
+      ? `The AI didn't read the contents — it judged how the connection behaved (its size, timing and speed). It didn't match any attack the AI was taught, but it sat far outside all the normal traffic it knows, which is why it's flagged as possibly new or unknown.`
+      : `The AI didn't read the contents — it judged how the connection behaved (its size, timing and speed) and found it matched attacks it has learned.`);
   }
 
   if (incident.time) facts.push(`Seen at ${clock(incident.time)}.`);
@@ -99,6 +108,9 @@ function evidence(incident: Incident): string[] {
 
 /** How much to trust this particular alert, given who flagged it. */
 function trust(incident: Incident): string {
+  if (isPossibleUnseen(incident) && incident.source === "ml") {
+    return "This is not a confirmed attack. The AI didn't recognise it as anything it was taught, but it also sits far outside all the normal traffic it has learned — the signature of something new or unknown. Treat it as a lead worth checking: look at who the connection is with and whether that traffic belongs on your network. If it's harmless, mark it \"Not an attack\" and the AI will learn to expect it.";
+  }
   if (incident.source === "both") {
     return "Two independent methods — the AI and the rule checker — both flagged this, so it is very likely a real attack. Worth acting on.";
   }
@@ -176,6 +188,7 @@ function WhyFlagged({ incident }: { incident: Incident }) {
   }, [incident.record_id, origin]);
 
   if (incident.ml == null || origin == null) return null; // AI alerts only
+  if (isPossibleUnseen(incident)) return null; // the AI judged it normal — there's no "why flagged as attack"
   const feats = res?.features ?? [];
   const max = Math.max(1e-9, ...feats.map((f) => Math.abs(f.contribution)));
   return (
@@ -217,6 +230,34 @@ function WhyFlagged({ incident }: { incident: Incident }) {
   );
 }
 
+/** Plain-language "is this a known attack, or something never seen before?" — the novelty signal. */
+function Familiarity({ novelty }: { novelty: Incident["novelty"] }) {
+  if (!novelty) return null;
+  const unfamiliar = novelty.novel;
+  const color = unfamiliar ? "var(--status-warning)" : "var(--status-good)";
+  return (
+    <div
+      className="mb-4 flex items-start gap-2.5 rounded-lg border p-3 text-xs"
+      style={{
+        borderColor: `color-mix(in oklab, ${color} 45%, transparent)`,
+        background: `color-mix(in oklab, ${color} 9%, transparent)`,
+      }}
+    >
+      <span aria-hidden className="text-base leading-none" style={{ color }}>
+        {unfamiliar ? "⚠" : "✓"}
+      </span>
+      <div>
+        <p className="font-semibold text-ink">{unfamiliar ? "Never seen before" : "A known pattern"}</p>
+        <p className="mt-0.5 text-ink-2">
+          {unfamiliar
+            ? "This doesn’t look like any attack the system has learned before. It could be a brand-new or unknown type of attack, so it is worth a closer look."
+            : "This matches the kind of traffic the system already learned, so it recognises what it is."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function IncidentDetail({ incident, onClose }: { incident: Incident; onClose: () => void }) {
   const sev = severityScore(incident);
   const rows: [string, React.ReactNode][] = [
@@ -247,7 +288,7 @@ export function IncidentDetail({ incident, onClose }: { incident: Incident; onCl
   ].filter(Boolean).join(" · ") || "—"]);
 
   return (
-    <aside className="rounded-xl border border-line bg-surface p-5" aria-label="Alert details">
+    <aside className="rounded-2xl border border-line bg-surface shadow-[var(--shadow)] p-5" aria-label="Alert details">
       <header className="mb-3 flex items-start justify-between gap-3">
         <h2 className="text-sm font-semibold text-ink">{headline(incident)}</h2>
         <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-xs text-ink-2 hover:bg-wash">
@@ -257,10 +298,11 @@ export function IncidentDetail({ incident, onClose }: { incident: Incident; onCl
       <div className="mb-4">
         <VerdictButtons incident={incident} />
       </div>
+      <Familiarity novelty={incident.novelty} />
       <div className="mb-4 space-y-3 rounded-md bg-wash p-3 text-xs text-ink-2">
         <p>
           <span className="font-semibold text-ink">What this is: </span>
-          {ATTACK_INFO[attackCategory(clueText(incident))].what}
+          {isPossibleUnseen(incident) && !incident.snort ? UNSEEN_WHAT : ATTACK_INFO[attackCategory(clueText(incident))].what}
         </p>
         <div>
           <p className="font-semibold text-ink">What was actually seen:</p>
@@ -337,7 +379,7 @@ export function IncidentsTable({
   incidents,
   actions,
   footer,
-  empty = "No alerts yet. Start live monitoring, or run a test on the Test page.",
+  empty = "No alerts yet. Start live monitoring to watch your network.",
   subtitle = "Each suspicious connection once, with what the AI and the rule checker said about it",
 }: {
   incidents: Incident[];
@@ -387,12 +429,27 @@ export function IncidentsTable({
                     <td className="px-3 py-1.5">{(() => { const s = severityScore(i); return <SeverityBadge tier={tierOf(s)} score={s} />; })()}</td>
                     <td className="tabular px-3 py-1.5 text-ink-2">{i.time ? clock(i.time) : "—"}</td>
                     <td className="px-3 py-1.5"><SourceTag source={i.source} /></td>
-                    <td className="max-w-72 truncate px-3 py-1.5 text-ink" title={what(i)}>{what(i)}</td>
+                    <td className="max-w-72 px-3 py-1.5 text-ink">
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate" title={what(i)}>{what(i)}</span>
+                        {(i.novelty?.novel || isPossibleUnseen(i)) && (
+                          <span
+                            title="This doesn’t match anything the system has seen before — possibly a new or unknown attack."
+                            className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                            style={{ color: "var(--status-warning)", background: "color-mix(in oklab, var(--status-warning) 14%, transparent)" }}
+                          >
+                            never seen before
+                          </span>
+                        )}
+                      </span>
+                    </td>
                     <td className="tabular px-3 py-1.5 text-ink-2">
                       {i.src || i.dst ? `${i.src ?? "?"} → ${i.dst ?? "?"}` : "—"}
                     </td>
                     <td className="px-3 py-1.5 text-ink-2">
-                      {i.ml ? (
+                      {isPossibleUnseen(i) ? (
+                        <StatusBadge tone="warning" label="Possibly unknown" />
+                      ) : i.ml ? (
                         <StatusBadge tone="critical" label="Attack" />
                       ) : i.snort?.ml_verdict === "normal" ? (
                         <StatusBadge tone="warning" label="Thinks it's normal" />

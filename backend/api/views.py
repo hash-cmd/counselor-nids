@@ -6,7 +6,7 @@ from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from nids.services import explain, feedback, journal, monitor
+from nids.services import cve, explain, feedback, journal, monitor, novelty_live
 
 from . import learning, replay, reputation, results
 from .redis_client import get_redis
@@ -84,9 +84,13 @@ class IncidentsView(APIView):
         source = params.get("source", "all")
         if source not in ("all", *monitor.SOURCES):
             return Response({"detail": f"unknown source {source!r}"}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(monitor.read_incidents(
-            get_redis(), source, params.get("q", ""),
-            limit=min(int(params.get("limit", 50)), 500), offset=max(int(params.get("offset", 0)), 0)))
+        r = get_redis()
+        data = monitor.read_incidents(
+            r, source, params.get("q", ""),
+            limit=min(int(params.get("limit", 50)), 500), offset=max(int(params.get("offset", 0)), 0))
+        # mark whether each flagged connection is a familiar attack or something unfamiliar (novelty)
+        novelty_live.enrich(r, data.get("incidents", []), _live_detectors(), _novelty_taus())
+        return Response(data)
 
 
 class ResultsView(APIView):
@@ -101,8 +105,10 @@ class SnortView(APIView):
     def get(self, request):
         limit = min(int(request.query_params.get("limit", 50)), 500)
         r = get_redis()
-        return Response({"summary": monitor.read_snort(r),
-                         "alerts": monitor.read_snort_alerts(r, limit, request.query_params.get("after"))})
+        alerts = monitor.read_snort_alerts(r, limit, request.query_params.get("after"))
+        # attach each alert's referenced CVE(s) with NVD severity/score (best-effort, cached)
+        cve.enrich_alerts(r, alerts, settings.NIDS_ROOT / "snort" / "rules", api_key=settings.NVD_API_KEY)
+        return Response({"summary": monitor.read_snort(r), "alerts": alerts})
 
 
 class ReplayStartSerializer(serializers.Serializer):
@@ -219,6 +225,28 @@ def _detector(name: str):
         import joblib
         _DETECTOR_CACHE[name] = joblib.load(replay.models_dir() / f"{name}.joblib")
     return _DETECTOR_CACHE[name]
+
+
+_LIVE_DETECTORS: dict = {}
+_NOVELTY_TAUS: dict | None = None
+
+
+def _live_detectors() -> dict:
+    """The promoted live detectors, keyed by name (loaded once, cached)."""
+    if not _LIVE_DETECTORS:
+        for p in replay.models():
+            det = _detector(p.stem)
+            if det is not None:
+                _LIVE_DETECTORS[p.stem] = det
+    return _LIVE_DETECTORS
+
+
+def _novelty_taus() -> dict:
+    """Per-detector novelty thresholds from models/live/novelty.json (loaded once)."""
+    global _NOVELTY_TAUS
+    if _NOVELTY_TAUS is None:
+        _NOVELTY_TAUS = novelty_live.load_taus(replay.models_dir())
+    return _NOVELTY_TAUS
 
 
 class ExplainView(APIView):

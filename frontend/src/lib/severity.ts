@@ -3,7 +3,7 @@
 
 import { attackCategory, type Category, ATTACK_INFO, bySpecificity, detectorClue } from "./plain";
 import { isLocalIp } from "./blocking";
-import type { Incident } from "./incidents";
+import { type Incident, isPossibleUnseen } from "./incidents";
 
 export type Tier = "critical" | "high" | "medium" | "low";
 
@@ -30,6 +30,10 @@ export function categoryOf(incident: Incident): Category {
 export function severityScore(incident: Incident): number {
   if (incident.label && incident.label.toLowerCase() === "benign") return 0; // known false alarm
   if (incident.feedback === "normal") return 0; // the analyst said it is not an attack
+  // The AI judged it normal but far outside anything it learned: a possible new/unknown attack —
+  // a lead worth checking, not a confirmed attack (unless Snort also fired, handled below, or the
+  // analyst confirmed it).
+  if (isPossibleUnseen(incident) && !incident.snort) return incident.feedback === "attack" ? 60 : 40;
   let score = CATEGORY_WEIGHT[categoryOf(incident)];
 
   // Corroboration: two independent methods agreeing is the strongest signal; an analyst

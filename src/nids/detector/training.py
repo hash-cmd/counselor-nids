@@ -17,9 +17,15 @@ def build_detector(
     categorical: list[str] = (),
     alpha: float = 0.001,
     seed: int = 0,
+    validation: pd.DataFrame | None = None,
 ) -> Detector:
-    """Split signatures 50/50, then train and evaluate a detector (Algorithm 1)."""
-    train, evaluation = split_signatures(signatures, stratify=stratify, seed=seed)
+    """Train and evaluate a detector (Algorithm 1). With an explicit ``validation`` set, that set
+    is used for clustering and classifier selection (the three-way train/validation/test protocol);
+    otherwise ``signatures`` is split 50/50 into training and evaluation."""
+    if validation is None:
+        train, evaluation = split_signatures(signatures, stratify=stratify, seed=seed)
+    else:
+        train, evaluation = signatures, validation
     model = DetectorModel(
         make_classifiers(classifiers, seed), n_clusters, alpha,
         [c for c in categorical if c in features], seed,

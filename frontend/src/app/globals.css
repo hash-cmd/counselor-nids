@@ -1,89 +1,96 @@
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
-/* Warm-dark "data journal" theme: charcoal-brown surfaces, cream ink, amber accent,
-   monospace micro-labels. Components use the role tokens, never raw hex. */
+/* Cool modern dashboard theme: slate surfaces, cool ink, indigo accent, a validated
+   colourblind-safe categorical series set. Components use the role tokens, never raw hex. */
 :root {
   color-scheme: light;
-  --page: #f3efe6;
-  --surface: #faf7f0;
+  --page: #eef1f6;
+  --surface: #ffffff;
   --surface-raised: #ffffff;
-  --ink: #1c1710;
-  --ink-secondary: #5a5344;
-  --ink-muted: #837b6b;
-  --grid: #e3ddce;
-  --axis: #cfc8b6;
-  --border: rgba(28, 23, 16, 0.12);
-  --wash: rgba(28, 23, 16, 0.04);
+  --ink: #0f172a;
+  --ink-secondary: #475569;
+  --ink-muted: #8a95a5;
+  --grid: #eef1f5;
+  --axis: #cbd5e1;
+  --border: rgba(15, 23, 42, 0.09);
+  --wash: rgba(15, 23, 42, 0.038);
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-raised: 0 4px 12px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.06);
 
-  --series-1: #a99a72;
-  --series-2: #c78327;
-  --series-3: #5f9e3f;
-  --series-4: #b65f33;
+  /* categorical series — validated (blue · orange · aqua · yellow) */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
 
-  --status-good: #4e8a2e;
-  --status-warning: #c78327;
-  --status-critical: #c04a2e;
-  --good-text: #3f7a24;
-  --critical-text: #b4472c;
-  --accent: #bd7d1f;
-  --accent-ink: #1c1710;
+  --status-good: #0ca30c;
+  --status-warning: #e0920a;
+  --status-critical: #d03b3b;
+  --good-text: #0a8a0a;
+  --critical-text: #c0392b;
+  --accent: #4f46e5;
+  --accent-ink: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
-    --page: #1a1611;
-    --surface: #221d17;
-    --surface-raised: #2a241c;
-    --ink: #f2eee4;
-    --ink-secondary: #b6ad9d;
-    --ink-muted: #847c6e;
-    --grid: #2f2920;
-    --axis: #3b342a;
-    --border: rgba(242, 238, 228, 0.11);
-    --wash: rgba(242, 238, 228, 0.05);
+    --page: #0b1017;
+    --surface: #161c26;
+    --surface-raised: #1c232f;
+    --ink: #e6edf3;
+    --ink-secondary: #a4b1bd;
+    --ink-muted: #6b7a8a;
+    --grid: #222b36;
+    --axis: #313c48;
+    --border: rgba(230, 237, 243, 0.10);
+    --wash: rgba(230, 237, 243, 0.045);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-raised: 0 6px 20px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.3);
 
-    --series-1: #cabf9f;
-    --series-2: #e3a73f;
-    --series-3: #93c16d;
-    --series-4: #d07c4f;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
 
-    --status-good: #93c16d;
-    --status-warning: #e3a73f;
-    --status-critical: #d4674a;
-    --good-text: #9fca72;
-    --critical-text: #dd7558;
-    --accent: #e3a73f;
-    --accent-ink: #1a1611;
+    --status-good: #2ebd54;
+    --status-warning: #e3a008;
+    --status-critical: #e5484d;
+    --good-text: #3fb950;
+    --critical-text: #f0776c;
+    --accent: #818cf8;
+    --accent-ink: #0b1017;
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page: #1a1611;
-  --surface: #221d17;
-  --surface-raised: #2a241c;
-  --ink: #f2eee4;
-  --ink-secondary: #b6ad9d;
-  --ink-muted: #847c6e;
-  --grid: #2f2920;
-  --axis: #3b342a;
-  --border: rgba(242, 238, 228, 0.11);
-  --wash: rgba(242, 238, 228, 0.05);
+  --page: #0b1017;
+  --surface: #161c26;
+  --surface-raised: #1c232f;
+  --ink: #e6edf3;
+  --ink-secondary: #a4b1bd;
+  --ink-muted: #6b7a8a;
+  --grid: #222b36;
+  --axis: #313c48;
+  --border: rgba(230, 237, 243, 0.10);
+  --wash: rgba(230, 237, 243, 0.045);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-raised: 0 6px 20px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.3);
 
-  --series-1: #cabf9f;
-  --series-2: #e3a73f;
-  --series-3: #93c16d;
-  --series-4: #d07c4f;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
 
-  --status-good: #93c16d;
-  --status-warning: #e3a73f;
-  --status-critical: #d4674a;
-  --good-text: #9fca72;
-  --critical-text: #dd7558;
-  --accent: #e3a73f;
-  --accent-ink: #1a1611;
+  --status-good: #2ebd54;
+  --status-warning: #e3a008;
+  --status-critical: #e5484d;
+  --good-text: #3fb950;
+  --critical-text: #f0776c;
+  --accent: #818cf8;
+  --accent-ink: #0b1017;
 }
 
 @theme inline {
@@ -99,8 +106,13 @@
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   --color-good: var(--good-text);
+  --color-warning: var(--status-warning);
   --color-critical: var(--critical-text);
-  --font-sans: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-series-4: var(--series-4);
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
 }
 
@@ -108,17 +120,19 @@ body {
   background: var(--page);
   color: var(--ink);
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .tabular {
   font-variant-numeric: tabular-nums;
 }
 
-/* Editorial micro-label: uppercase monospace, letter-spaced, dim. */
+/* Micro-label: uppercase, letter-spaced, dim — for section eyebrows and chips. */
 .eyebrow {
   font-family: var(--font-mono);
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
   font-size: 10px;
   line-height: 1.4;
   color: var(--ink-muted);
@@ -131,6 +145,18 @@ body {
   letter-spacing: -0.02em;
 }
 
+/* Thin, unobtrusive scrollbars inside scroll regions. */
+.overflow-auto::-webkit-scrollbar,
+.overflow-y-auto::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.overflow-auto::-webkit-scrollbar-thumb,
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+}
+
 /* Print / Save-as-PDF: drop the app chrome, expand scroll areas, go light. */
 @media print {
   :root,
@@ -139,6 +165,8 @@ body {
     --surface: #ffffff;
     --surface-raised: #ffffff;
     --ink: #000000;
+    --shadow: none;
+    --shadow-raised: none;
   }
   body {
     background: #ffffff;

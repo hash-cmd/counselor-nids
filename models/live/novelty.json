@@ -1,0 +1,21 @@
+{
+ "keep_benign": 0.95,
+ "alert_quantile": 0.995,
+ "detectors": {
+  "live_dos": {
+   "tau": 7.6815,
+   "tau_alert": 25.9219,
+   "median_benign": 3.1504
+  },
+  "live_access": {
+   "tau": 8.6823,
+   "tau_alert": 24.5965,
+   "median_benign": 3.4709
+  },
+  "live_bot": {
+   "tau": 11.416,
+   "tau_alert": 17.8128,
+   "median_benign": 4.0748
+  }
+ }
+}

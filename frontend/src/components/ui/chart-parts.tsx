@@ -18,14 +18,16 @@ export function Card({
   className?: string;
 }) {
   return (
-    <section className={`rounded-xl border border-line bg-surface p-5 ${className ?? ""}`}>
+    <section
+      className={`rounded-2xl border border-line bg-surface p-5 shadow-[var(--shadow)] ${className ?? ""}`}
+    >
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="flex items-center gap-2 text-sm font-semibold tracking-tight text-ink">
+          <h2 className="flex items-center gap-2 text-[13px] font-semibold tracking-tight text-ink">
             {title}
             {tag && <span className="eyebrow">{tag}</span>}
           </h2>
-          {subtitle && <p className="mt-1 text-xs text-ink-2">{subtitle}</p>}
+          {subtitle && <p className="mt-1 text-xs leading-relaxed text-ink-2">{subtitle}</p>}
         </div>
         {actions}
       </header>

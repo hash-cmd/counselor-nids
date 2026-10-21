@@ -90,6 +90,7 @@ export type SnortAlert = {
   ml_confidence: number | null;
   ml_detector: string | null;
   time: number | null;
+  cves?: { id: string; severity: string | null; score: number | null; url: string; description?: string }[];
 };
 
 export type Metrics = { accuracy: number; detection_rate: number; false_alarm_rate: number };

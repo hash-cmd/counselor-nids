@@ -57,6 +57,18 @@ class Calibrator:
         return np.clip(self.model.predict_proba(s.reshape(-1, 1))[:, 1], 1e-6, 1 - 1e-6)
 
 
+def _attack_proba(clf, X) -> np.ndarray:
+    """Probability of the attack class. A classifier trained on benign traffic only (its
+    detector's sole attack family was withheld, as in leave-one-family-out) has no attack class in
+    ``predict_proba`` and so contributes a probability of 0."""
+    proba = clf.predict_proba(X)
+    classes = list(clf.classes_)
+    for attack in (True, 1):
+        if attack in classes:
+            return proba[:, classes.index(attack)]
+    return np.zeros(len(X))
+
+
 def detector_proba(detector, X) -> np.ndarray:
     """A single attack probability per row from one detector: the mean of the selected
     classifiers' ``predict_proba`` in that row's cluster (a softer signal than the binary vote)."""
@@ -67,7 +79,7 @@ def detector_proba(detector, X) -> np.ndarray:
     for k in np.unique(clusters):
         rows = np.flatnonzero(clusters == k)
         names = m.clusters[k].selected
-        probs = np.column_stack([m.classifiers[n].predict_proba(Xt[rows])[:, 1] for n in names])
+        probs = np.column_stack([_attack_proba(m.classifiers[n], Xt[rows]) for n in names])
         out[rows] = probs.mean(axis=1)
     return out
 
