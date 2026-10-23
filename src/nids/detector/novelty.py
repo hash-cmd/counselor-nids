@@ -24,10 +24,12 @@ def novelty_scores(detector, samples: pd.DataFrame) -> np.ndarray:
     return detector.model.kmeans.transform(xt).min(axis=1).astype(float)
 
 
-def choose_threshold(benign_scores, keep_benign: float = 0.95) -> float:
+def choose_threshold(benign_scores, keep_benign: float = 0.99) -> float:
     """A threshold ``tau`` that keeps ``keep_benign`` of benign *validation* flows below it, so
-    about ``1 - keep_benign`` of benign traffic is flagged novel. Set on benign validation only,
-    so the novelty flag's benign false-positive budget is fixed before any attack is seen."""
+    about ``1 - keep_benign`` of benign traffic is flagged novel. The default 0.99 (the 99th
+    percentile, ~1% of familiar traffic flagged) is the value set in Chapter 3. Set on benign
+    validation only, so the novelty flag's benign false-positive budget is fixed before any
+    attack is seen."""
     benign_scores = np.asarray(benign_scores, dtype=float)
     benign_scores = benign_scores[np.isfinite(benign_scores)]
     if not len(benign_scores):

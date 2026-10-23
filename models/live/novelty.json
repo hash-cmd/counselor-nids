@@ -1,21 +1,21 @@
 {
- "keep_benign": 0.95,
- "alert_quantile": 0.995,
+ "keep_benign": 0.99,
+ "note": "Single novelty threshold tau = 99th percentile of each detector's held-out benign evaluation flows (Chapter 3, section 3.7.1). tau_alert == tau: the live 'possible unseen attack' alert uses the same tau, matching Chapter 3's single threshold.",
  "detectors": {
   "live_dos": {
-   "tau": 7.6815,
-   "tau_alert": 25.9219,
-   "median_benign": 3.1504
+   "tau": 10.5791,
+   "tau_alert": 10.5791,
+   "median_benign": 2.9021
   },
   "live_access": {
-   "tau": 8.6823,
-   "tau_alert": 24.5965,
-   "median_benign": 3.4709
+   "tau": 12.4064,
+   "tau_alert": 12.4064,
+   "median_benign": 3.2409
   },
   "live_bot": {
-   "tau": 11.416,
-   "tau_alert": 17.8128,
-   "median_benign": 4.0748
+   "tau": 15.16,
+   "tau_alert": 15.16,
+   "median_benign": 3.8754
   }
  }
 }
