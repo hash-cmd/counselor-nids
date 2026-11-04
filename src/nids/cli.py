@@ -100,6 +100,15 @@ def journal(args) -> None:
     j.run(bus.connect(args.redis), args.dir, keep_days=args.keep_days)
 
 
+def record(args) -> None:
+    from .services import bus
+    from .services import recorder as rec
+
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    print(f"recorder: writing CSVs to {args.dir}", flush=True)
+    rec.run(bus.connect(args.redis), args.dir)
+
+
 def journal_report(args) -> None:
     import json
     from datetime import datetime
@@ -176,6 +185,10 @@ def main(argv=None) -> None:
     p.add_argument("--dir", type=Path, default=PROJECT_ROOT / "logs" / "journal")
     p.add_argument("--keep-days", type=int, default=365, help="delete day files older than this")
     p.set_defaults(func=journal)
+
+    p = sub.add_parser("record", help="append every connection and alert to dated CSV files")
+    p.add_argument("--dir", type=Path, default=PROJECT_ROOT / "logs" / "records")
+    p.set_defaults(func=record)
 
     p = sub.add_parser("journal-report", help="false alarms recorded by the journal")
     p.add_argument("--dir", type=Path, default=PROJECT_ROOT / "logs" / "journal")

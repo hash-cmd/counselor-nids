@@ -44,6 +44,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 const SERVICE_NAMES: Record<string, string> = {
   capture: "Traffic capture", observer: "Dispatcher", snort: "Rule checker (Snort)", journal: "False-alarm journal",
+  recorder: "CSV recorder",
 };
 
 function serviceName(service: string): string {

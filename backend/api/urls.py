@@ -15,6 +15,7 @@ urlpatterns = [
     path("detectors/", views.DetectorsView.as_view(), name="detectors"),
     path("alerts/", views.AlertsView.as_view(), name="alerts"),
     path("connections/", views.ConnectionsView.as_view(), name="connections"),
+    path("records/", views.RecordsView.as_view(), name="records"),
     path("incidents/", views.IncidentsView.as_view(), name="incidents"),
     path("results/", views.ResultsView.as_view(), name="results"),
     path("journal/", views.JournalView.as_view(), name="journal"),

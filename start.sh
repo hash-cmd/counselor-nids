@@ -291,6 +291,8 @@ cmd_live() {
   run_service observer "$NIDS" observe
   # live alerts are also kept in logs/journal/ — `nids journal-report` gives the false-alarm rate
   [[ "$target" == /* ]] || run_service journal "$NIDS" journal
+  # opt-in: keep a spreadsheet-friendly CSV of every connection and alert in logs/records/ (NIDS_RECORD=1)
+  if [[ "${NIDS_RECORD:-0}" == 1 ]]; then run_service recorder "$NIDS" record; fi
   for model in "${models[@]}"; do
     run_service "detect-$(basename "$model" .joblib)" "$NIDS" detect "$model" --sources live --cross-check --suppress-fallback "${counsel[@]}"
   done

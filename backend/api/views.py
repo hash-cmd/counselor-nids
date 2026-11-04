@@ -1,7 +1,9 @@
 import os
+import re
 from pathlib import Path
 
 from django.conf import settings
+from django.http import FileResponse
 from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -74,6 +76,46 @@ class ConnectionsView(APIView):
         """Turn the full-traffic feed on or off at runtime ({"on": true|false})."""
         on = bool(request.data.get("on"))
         return Response({"feed_on": monitor.set_feed(get_redis(), on)})
+
+
+def records_dir() -> Path:
+    return Path(os.environ.get("NIDS_RECORD_DIR", settings.NIDS_ROOT / "logs" / "records"))
+
+
+RECORD_NAME = re.compile(r"(connections|alerts|snort)-\d{4}-\d{2}-\d{2}\.csv")
+
+
+def _count_rows(path: Path) -> int:
+    """Data rows in a CSV (newlines, minus the header), counted in binary for speed."""
+    with path.open("rb") as f:
+        lines = sum(buf.count(b"\n") for buf in iter(lambda: f.read(1 << 20), b""))
+    return max(0, lines - 1)
+
+
+class RecordsView(APIView):
+    """The durable CSV record written by the recorder service (logs/records/). GET lists the
+    files; GET ?name=<file> downloads one. Only the recorder's own dated CSV names are served,
+    so a crafted name cannot read an arbitrary file."""
+
+    def get(self, request):
+        folder = records_dir()
+        name = request.query_params.get("name")
+        if name:
+            if not RECORD_NAME.fullmatch(name):
+                return Response({"detail": "unknown record"}, status=status.HTTP_400_BAD_REQUEST)
+            path = folder / name
+            if not path.is_file():
+                return Response({"detail": "not found"}, status=status.HTTP_404_NOT_FOUND)
+            return FileResponse(path.open("rb"), as_attachment=True, filename=name, content_type="text/csv")
+        records = []
+        for p in sorted(folder.glob("*.csv"), reverse=True) if folder.exists() else []:
+            if not RECORD_NAME.fullmatch(p.name):
+                continue
+            st = p.stat()
+            records.append({"name": p.name, "kind": p.stem.split("-")[0], "bytes": st.st_size,
+                            "rows": _count_rows(p), "modified": st.st_mtime})
+        recording = any(s["service"] == "recorder" and s["ok"] for s in monitor.read_health(get_redis()))
+        return Response({"records": records, "recording": recording})
 
 
 class IncidentsView(APIView):

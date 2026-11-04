@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { Card, DataTable } from "@/components/ui/chart-parts";
+import { RecordsCard } from "@/components/panels/records";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { API_URL, api } from "@/lib/api";
 import { clock, count } from "@/lib/format";
@@ -134,6 +135,8 @@ export default function TrafficPage() {
           />
         )}
       </Card>
+
+      <RecordsCard />
     </>
   );
 }
