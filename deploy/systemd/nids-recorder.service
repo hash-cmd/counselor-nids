@@ -1,0 +1,20 @@
+# Appends every connection and alert to dated CSV files in logs/records/ (downloadable from the
+# dashboard). Connections are recorded only while the full-traffic feed is on: set
+# NIDS_FEED_ALL=1 in /etc/nids/nids.env to record all of them (the dashboard toggle is cleared
+# whenever capture restarts).
+[Unit]
+Description=Counselor NIDS CSV recorder (logs/records/)
+After=redis-server.service nids-capture.service
+PartOf=nids-capture.service nids.target
+
+[Service]
+User=@USER@
+EnvironmentFile=/etc/nids/nids.env
+WorkingDirectory=@ROOT@
+NoNewPrivileges=yes
+ExecStart=@ROOT@/.venv/bin/nids record
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=nids.target

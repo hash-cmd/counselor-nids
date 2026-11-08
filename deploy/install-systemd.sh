@@ -75,6 +75,6 @@ for unit in "$ROOT"/deploy/systemd/*; do
 done
 systemctl daemon-reload
 systemctl enable "$REDIS_UNIT" nids.target nids-api nids-web nids-capture nids-observer nids-snort \
-  nids-journal nids-health.timer "${MODELS[@]/#/nids-detector@}" >/dev/null
+  nids-journal nids-recorder nids-health.timer "${MODELS[@]/#/nids-detector@}" >/dev/null
 systemctl restart nids.target
 say "started — dashboard on http://localhost:3000; status: systemctl status nids.target"

@@ -31,6 +31,7 @@ To remove everything: `sudo deploy/install-systemd.sh --uninstall`. The settings
 | `nids-detector@<model>` | one per file in `models/live/`, with Snort as a counselor (`--snort-counselor`) |
 | `nids-snort` | Snort on the same interface, linked to the ML verdicts |
 | `nids-journal` | the false-alarm record in `logs/journal/` |
+| `nids-recorder` | dated CSVs of alerts, Snort alerts and (with `NIDS_FEED_ALL=1` in `/etc/nids/nids.env`) every connection, in `logs/records/` |
 | `nids-api`, `nids-web` | Daphne API on :8000, Next.js dashboard on :3000 |
 | `nids-health.timer` | `nids health` every minute |
 
