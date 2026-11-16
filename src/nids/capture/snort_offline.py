@@ -16,16 +16,25 @@ from pathlib import Path
 
 import pandas as pd
 
+from ..datasets.paths import PROJECT_ROOT
+
 from ..services.flow_index import SLACK, connection_key, host_key
 from ..services.snort_bridge import HOST_LEVEL_GIDS, HOST_WINDOW, snort_command
 
 
-def run_snort(pcap: Path, work: Path, community: bool = True) -> list[dict]:
-    """Snort's alerts on ``pcap`` (alert_json records), written under ``work``."""
+def run_snort(pcap: Path, work: Path, community: bool = True, bpf: str | None = None) -> list[dict]:
+    """Snort's alerts on ``pcap`` (alert_json records), written under ``work``. ``bpf``: a
+    tcpdump-style filter Snort applies while reading (no extracted copy of the capture needed)."""
     work.mkdir(parents=True, exist_ok=True)
-    env = os.environ | {"NIDS_SNORT_COMMUNITY": "1" if community else "0"}
-    subprocess.run(snort_command(str(pcap), str(work)), check=False, env=env,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # nids.lua finds the rules relative to the working directory unless told otherwise; from
+    # any other directory Snort would load no rules and report nothing
+    env = {"NIDS_SNORT_RULES": str(PROJECT_ROOT / "snort" / "rules")} | os.environ | \
+        {"NIDS_SNORT_COMMUNITY": "1" if community else "0"}
+    command = snort_command(str(pcap), str(work)) + (["--bpf", bpf] if bpf else [])
+    done = subprocess.run(command, check=False, env=env,
+                          stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    if done.returncode != 0:
+        raise RuntimeError(f"snort failed (exit {done.returncode}): {done.stderr.strip()[-2000:]}")
     path = work / "alert_json.txt"
     if not path.exists():
         return []
