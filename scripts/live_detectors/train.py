@@ -8,13 +8,14 @@ with different knowledge, as in the paper's Scenario 2:
     live_access   brute force (FTP, SSH), web attacks and port scans
     live_bot      botnet (Ares hosts calling their command-and-control server)
 
-All learn from all benign flows. Split by TIME within each label and capture (earliest 80%
-for signatures, latest 20% for test), so test flows come from later in each attack than any
-training flow — closer to meeting traffic live than a random split. ``--train-labs`` and
+All learn from all benign flows. Flows are cleaned and de-duplicated, then split by TIME within
+each label and capture (data_prep.py): earliest 60% training, next 20% validation, latest 20%
+test. Classifier selection, novelty thresholds and the promotion gate use validation only; the
+test split is evaluated once at the end, for reporting. ``--train-labs`` and
 ``--test-labs`` train on one lab and test on the other (with ``--evaluate-only``), to check
 the detectors learned the attacks and not the lab.
 
-Promotion gate: the installed models are tested on the same test flows, and the new ones
+Promotion gate: the installed models are tested on the same validation flows, and the new ones
 replace them only if the whole system does not get worse — no more false alarms, no attack
 type's detection drops by more than --max-drop, and attack types the installed models never
 learned reach FIRST_MIN_DETECTION. A bad retrain therefore never silently reaches live
@@ -38,12 +39,14 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from nids.counselor import CounselorNetwork
-from nids.datasets.flow_features import CIC2018_TO_2017
+from nids.counselor import LIVE, CounselorNetwork
 from nids.datasets.paths import PROJECT_ROOT, RESULTS_DIR
 from nids.detector.classifiers import CLASSIFIERS
-from nids.evaluation import mcnemar, metrics, metrics_with_intervals, wilson
+from nids.evaluation import clustered_mcnemar, metrics, metrics_with_intervals, wilson
+from nids.detector import novelty as nov
 from nids.detector.training import build_detector
+
+import data_prep as dp
 
 PROCESSED = PROJECT_ROOT / "data" / "processed" / "live"
 LABS = {"2018": [PROCESSED / "flows.pkl"], "2017": sorted(PROCESSED.glob("cicids2017-*.pkl"))}
@@ -53,6 +56,9 @@ SYSTEM = "counselor network"
 # with no installed baseline, a candidate must at least meet these
 FIRST_MAX_FALSE_ALARMS = 0.002
 FIRST_MIN_DETECTION = 0.8
+# identifies the split; installed models trained under another protocol have seen this run's
+# validation/test flows, so they can't serve as the gate's baseline
+PROTOCOL = "time-ordered 60/20/20 within (label, capture), deduplicated; selection+gate on validation"
 
 KNOWLEDGE = {
     "live_dos": ["DoS-GoldenEye", "DoS-Slowloris", "DoS-Hulk", "DoS-SlowHTTPTest", "DDoS"],
@@ -90,9 +96,9 @@ def evaluate(detectors, test: pd.DataFrame, min_accuracy: float) -> tuple[pd.Dat
         d.clear_history()
         verdicts[f"{d.name} alone"] = d.detect(test, test["record_id"])["prediction"].to_numpy(dtype=bool)
         d.clear_history()
-    # evaluated exactly as live mode runs: cross-check on, unresolved-conflict guesses suppressed
-    finals = CounselorNetwork(detectors, min_accuracy, window=0, cross_check_normal=True,
-                              suppress_fallback=True).run(test, test["record_id"])
+    # evaluated exactly as live mode runs (counselor.LIVE)
+    finals = CounselorNetwork(detectors, min_accuracy, window=0, learn_from_advice=False,
+                              **LIVE).run(test, test["record_id"])
     verdicts[SYSTEM] = np.logical_or.reduce([f["prediction"].to_numpy(dtype=bool) for f in finals.values()])
     for d in detectors:
         d.clear_history()
@@ -104,6 +110,41 @@ def evaluate(detectors, test: pd.DataFrame, min_accuracy: float) -> tuple[pd.Dat
     summary = {k: metrics(y, v) for k, v in verdicts.items()}
     summary[SYSTEM] = metrics_with_intervals(y, verdicts[SYSTEM])
     return table, summary, verdicts[SYSTEM]
+
+
+CONFLICT_RULES = {
+    "any detector alone": None,
+    "previous live (normal advice + suppress)": dict(suppress_fallback=True),
+    "paper (normal advice + best guess)": dict(),
+    "live (no normal advice + best guess)": dict(conflict_normal_advice=False),
+    "no normal advice + proba>=0.7": dict(conflict_normal_advice=False, fallback_threshold=0.7),
+}
+
+
+def conflict_ablation(detectors, test: pd.DataFrame, min_accuracy: float) -> pd.DataFrame:
+    """Detection, false alarms and a session-clustered McNemar test against "any detector
+    alone", per conflict-handling rule, on the same flows."""
+    y, sessions, rid = test["is_attack"].to_numpy(), dp.session_ids(test), test["record_id"]
+    verdicts = {}
+    for name, kw in CONFLICT_RULES.items():
+        if kw is None:
+            verdicts[name] = np.logical_or.reduce([d.detect(test, rid)["prediction"].to_numpy(dtype=bool)
+                                                   for d in detectors])
+        else:
+            out = CounselorNetwork(detectors, min_accuracy, window=0, cross_check_normal=True,
+                                   learn_from_advice=False, **kw).run(test, rid)
+            verdicts[name] = np.logical_or.reduce([f["prediction"].to_numpy(dtype=bool) for f in out.values()])
+        for d in detectors:
+            d.clear_history()
+    base = verdicts["any detector alone"]
+    rows = {}
+    for name, v in verdicts.items():
+        m = metrics(y, v)
+        t = clustered_mcnemar(y, v, base, sessions)
+        rows[name] = {"detection_rate": m["detection_rate"], "fp_per_1k": 1000 * m["false_alarm_rate"],
+                      "flows_differ": t["b"] + t["c"], "sessions_differ": t["informative_clusters"],
+                      "p_vs_alone": t["p_value"]}
+    return pd.DataFrame(rows).T
 
 
 def intervals(test: pd.DataFrame, verdict: np.ndarray) -> pd.DataFrame:
@@ -158,7 +199,9 @@ def sha256(path) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--train-share", type=float, default=0.8)
+    parser.add_argument("--train-share", type=float, default=0.6)
+    parser.add_argument("--val-share", type=float, default=0.2,
+                        help="validation share: classifier selection, novelty thresholds and the gate")
     parser.add_argument("--min-accuracy", type=float, default=0.9)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--labs", nargs="+", choices=list(LABS), default=list(LABS),
@@ -177,15 +220,26 @@ def main():
     parser.add_argument("--force", action="store_true", help="install the models even if the gate fails")
     parser.add_argument("--evaluate-only", action="store_true", help="report results, install nothing")
     parser.add_argument("--results", default="live", help="folder under results/ for this run's tables")
+    parser.add_argument("--ablation", action="store_true",
+                        help="also compare conflict-handling rules on the test split (conflict_rules.csv)")
+    parser.add_argument("--drop-port", action="store_true",
+                        help="train without Destination Port (port-shortcut sensitivity analysis)")
     args = parser.parse_args()
 
-    features = list(CIC2018_TO_2017.values())
+    features = dp.common_features(drop_port=args.drop_port)
+    installed_manifest = json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {}
+    comparable = installed_manifest.get("protocol") == PROTOCOL
+    if args.only and not comparable:
+        sys.exit("--only reuses installed models, but they were trained under a different split and "
+                 "have seen this run's validation/test flows; retrain all detectors")
 
     flows = load(sorted(set(args.labs) | set(args.train_labs or []) | set(args.test_labs or [])))
-    flows = flows.replace([np.inf, -np.inf], np.nan).dropna(subset=features)
-    signatures, test = time_split(flows, args.train_share)
+    flows, cleaning = dp.prepare(flows, features)
+    print("cleaning:", cleaning)
+    signatures, val, test = dp.three_way_split(flows, args.train_share, args.val_share)
     if args.train_labs:
         signatures = signatures[signatures["lab"].isin(args.train_labs)]
+        val = val[val["lab"].isin(args.train_labs)]
     if args.test_labs:
         test = test[test["lab"].isin(args.test_labs)]
     if args.max_per_label:
@@ -193,9 +247,9 @@ def main():
             [g if label == "Benign" else g.sample(min(len(g), args.max_per_label), random_state=args.seed)
              for label, g in signatures.groupby("label")], ignore_index=True)
     signatures = signatures.reset_index(drop=True)
-    test = test.sample(frac=1, random_state=args.seed).reset_index(drop=True)
-    test["record_id"] = np.arange(len(test))
-    print(f"{len(signatures):,} signature flows, {len(test):,} test flows")
+    val, test = (part.sample(frac=1, random_state=args.seed).reset_index(drop=True) for part in (val, test))
+    val["record_id"], test["record_id"] = np.arange(len(val)), np.arange(len(test))
+    print(f"{len(signatures):,} training, {len(val):,} validation, {len(test):,} test flows")
     print(pd.crosstab(flows["label"], flows["lab"]).to_string())
 
     trained, detectors = [], []
@@ -204,49 +258,70 @@ def main():
             detectors.append(joblib.load(MODELS / f"{name}.joblib"))
             print(f"{name}: kept the saved model")
             continue
-        known = signatures[signatures["label"].isin(["Benign", *attacks])]
+        keep = ["Benign", *attacks]
+        known = signatures[signatures["label"].isin(keep)]
+        # classifiers are selected per cluster on the time-ordered validation slice, not on a
+        # random half of training (near-duplicate flows of one session would sit on both sides)
         print(f"{name}: training on {len(known):,} flows", flush=True)
         detectors.append(build_detector(name, known, features, CLASSIFIERS, n_clusters=known["label"].nunique(),
-                                        stratify="label", seed=args.seed))
+                                        stratify="label", seed=args.seed,
+                                        validation=val[val["label"].isin(keep)]))
         trained.append(detectors[-1])
 
+    # every decision (gate, McNemar, novelty thresholds) is made on VALIDATION flows only
+    print("\n== validation (used for the promotion decision) ==")
+    val_table, val_summary, val_verdict = evaluate(detectors, val, args.min_accuracy)
+    show(val_table, val_summary)
+    rates = val_table[SYSTEM]
+    taus = novelty_thresholds(detectors, val, features)
+
+    baseline, tests = None, None
+    installed = sorted(MODELS.glob("*.joblib"))
+    if installed and comparable and not args.evaluate_only:
+        print("\ninstalled models on the same validation flows:")
+        before, before_summary, before_verdict = evaluate([joblib.load(p) for p in installed], val, args.min_accuracy)
+        show(before, before_summary)
+        baseline = {"by_label": before[SYSTEM].to_dict()}
+        # sessions, not flows, are the unit: flows of one session are near-copies
+        y, sessions = val["is_attack"].to_numpy(), dp.session_ids(val)
+        tests = {"all": clustered_mcnemar(y, val_verdict, before_verdict, sessions)}
+        for label, g in val.groupby("label"):
+            i = g.index
+            tests[label] = clustered_mcnemar(y[i], val_verdict[i], before_verdict[i], sessions[i])
+        t = tests["all"]
+        print(f"\nnew vs installed (McNemar, validation): new alone right on {t['b']:,} flows, installed "
+              f"alone on {t['c']:,}; {t['informative_clusters']} of {t['clusters']} sessions differ; p = {t['p_value']:.3g}")
+    elif installed and not comparable:
+        print("\ninstalled models were trained under a different split (they have seen these flows): "
+              "comparing against the minimum bar instead")
+
+    problems = gate(rates, baseline, args.max_drop, args.max_fa_rise)
+
+    # the test split is touched once, after every choice above is fixed, for reporting only
+    print("\n== test (reported only; never used for a decision) ==")
     table, summary, verdict = evaluate(detectors, test, args.min_accuracy)
     show(table, summary)
     out = RESULTS_DIR / args.results
     out.mkdir(parents=True, exist_ok=True)
     intervals(test, verdict).to_csv(out / "intervals.csv")
     table.to_csv(out / "by_label.csv")
-    (out / "summary.json").write_text(json.dumps({"metrics": summary, "args": vars(args),
-                                                  "knowledge": KNOWLEDGE}, indent=2))
+    (out / "summary.json").write_text(json.dumps({"protocol": PROTOCOL, "cleaning": cleaning, "metrics": summary,
+                                                  "args": vars(args), "knowledge": KNOWLEDGE}, indent=2))
+    rates.to_frame("new").assign(installed=pd.Series(baseline["by_label"]) if baseline else np.nan) \
+        .to_csv(out / "gate.csv")
+    if args.ablation:
+        rules = conflict_ablation(detectors, test, args.min_accuracy)
+        print("\nconflict-handling rules (test):\n" + rules.to_string())
+        rules.to_csv(out / "conflict_rules.csv")
+    if tests:
+        (out / "mcnemar.json").write_text(json.dumps(
+            {"a": "new", "b": "installed", "split": "validation",
+             "note": "b = only the new system right, c = only the installed one right", "tests": tests}, indent=1))
     if args.evaluate_only:
         return
 
-    # the installed models, tested on the same flows, are the bar the new ones must clear
-    installed = sorted(MODELS.glob("*.joblib"))
-    baseline = None
-    if installed and MANIFEST.exists():
-        print("\ninstalled models on the same test flows:")
-        before, before_summary, before_verdict = evaluate([joblib.load(p) for p in installed], test, args.min_accuracy)
-        show(before, before_summary)
-        baseline = {"by_label": before[SYSTEM].to_dict()}
-        # is the difference real? McNemar on the same test flows, overall and per label
-        y = test["is_attack"].to_numpy()
-        tests = {"all": mcnemar(y, verdict, before_verdict)}
-        for label, g in test.groupby("label"):
-            tests[label] = mcnemar(y[g.index], verdict[g.index], before_verdict[g.index])
-        (out / "mcnemar.json").write_text(json.dumps(
-            {"a": "new", "b": "installed", "note": "b = only the new system right, c = only the installed one right",
-             "tests": tests}, indent=1))
-        t = tests["all"]
-        print(f"\nnew vs installed (McNemar): new alone right on {t['b']:,} flows, installed alone on "
-              f"{t['c']:,}; p = {t['p_value']:.3g} ({'significant' if t['p_value'] < 0.05 else 'not significant'} at 5%)")
-
-    rates = table[SYSTEM]
-    problems = gate(rates, baseline, args.max_drop, args.max_fa_rise)
-    rates.to_frame("new").assign(installed=pd.Series(baseline["by_label"]) if baseline else np.nan) \
-        .to_csv(out / "gate.csv")
     if problems:
-        print("\npromotion gate FAILED against the", "installed models" if baseline else "minimum bar")
+        print("\npromotion gate FAILED (validation) against the", "installed models" if baseline else "minimum bar")
         for p in problems:
             print("  -", p)
         if not args.force:
@@ -262,13 +337,16 @@ def main():
     files = sorted(MODELS / f"{name}.joblib" for name in KNOWLEDGE)
     for stale in set(MODELS.glob("*.joblib")) - set(files):
         stale.unlink()  # a detector no longer in KNOWLEDGE must not keep running live
+    (MODELS / "novelty.json").write_text(json.dumps(taus, indent=1) + "\n")
     sums = {p.name: sha256(p) for p in files}
     (MODELS / "SHA256SUMS").write_text("".join(f"{h}  {n}\n" for n, h in sums.items()))
     MANIFEST.write_text(json.dumps({
         "promoted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "protocol": PROTOCOL,
         "knowledge": KNOWLEDGE,
         "metrics": summary[SYSTEM],
-        "by_label": rates.to_dict(),
+        "by_label": table[SYSTEM].to_dict(),
+        "validation_by_label": rates.to_dict(),
         "test_flows": table["flows"].astype(int).to_dict(),
         "labs": args.labs,
         "sha256": sums,
@@ -276,6 +354,20 @@ def main():
     }, indent=2) + "\n")
     print("\ninstalled", ", ".join(str(MODELS / f"{d.name}.joblib") for d in trained) or "no new models",
           f"(manifest: {MANIFEST})")
+
+
+def novelty_thresholds(detectors, val: pd.DataFrame, features: list[str], keep_benign: float = 0.99) -> dict:
+    """Per-detector novelty threshold tau: the 99th percentile of the detector's novelty score on
+    benign VALIDATION flows (never test). Written to models/live/novelty.json for live mode."""
+    benign = val.loc[~val["is_attack"], features]
+    out = {"keep_benign": keep_benign, "split": "validation", "detectors": {}}
+    for d in detectors:
+        scores = nov.novelty_scores(d, benign)
+        tau = float(nov.choose_threshold(scores, keep_benign))
+        out["detectors"][d.name] = {"tau": round(tau, 4), "tau_alert": round(tau, 4),
+                                    "median_benign": round(float(np.median(scores)), 4)}
+    return out
+
 
 if __name__ == "__main__":
     main()

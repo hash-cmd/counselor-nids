@@ -98,3 +98,67 @@ def mcnemar(y_true, pred_a, pred_b, exact_below: int = 25) -> dict:
     statistic = (abs(b - c) - 1) ** 2 / (b + c)
     return {"b": b, "c": c, "test": "chi-square (continuity corrected)", "statistic": float(statistic),
             "p_value": float(stats.chi2.sf(statistic, 1))}
+
+
+# ------------------------------------------------------------------ clustered (session) statistics
+# Flows are not independent: one attack session yields thousands of near-identical flows, so
+# per-flow tests (McNemar above, Wilson intervals) overstate certainty — a p-value of 0.0 on
+# 400k flows mostly counts the same sessions many times. The tests below treat the *session*
+# (``groups``: e.g. host pair x minute, see data_prep.session_ids) as the unit of evidence.
+
+
+def clustered_mcnemar(y_true, pred_a, pred_b, groups) -> dict:
+    """McNemar's test for clustered data (Durkalski et al., 2003, Stat. Med. 22:1417-1428).
+
+    Per cluster k, b_k = flows only A gets right and c_k = flows only B gets right; the statistic
+    (sum_k (b_k - c_k))^2 / sum_k (b_k - c_k)^2 is chi-square with 1 df under H0. Reduces to the
+    ordinary test (without continuity correction) when every cluster holds one flow."""
+    y_true = np.asarray(y_true, dtype=bool)
+    a_right = np.asarray(pred_a, dtype=bool) == y_true
+    b_right = np.asarray(pred_b, dtype=bool) == y_true
+    _, g = np.unique(np.asarray(groups), return_inverse=True)
+    d = (np.bincount(g, weights=(a_right & ~b_right).astype(float))
+         - np.bincount(g, weights=(~a_right & b_right).astype(float)))
+    b, c = int((a_right & ~b_right).sum()), int((~a_right & b_right).sum())
+    informative = int((d != 0).sum())
+    denom = float((d ** 2).sum())
+    if denom == 0:
+        return {"b": b, "c": c, "clusters": int(g.max() + 1) if len(g) else 0, "informative_clusters": 0,
+                "test": "clustered McNemar", "statistic": 0.0, "p_value": 1.0}
+    statistic = float(d.sum() ** 2 / denom)
+    return {"b": b, "c": c, "clusters": int(g.max() + 1), "informative_clusters": informative,
+            "test": "clustered McNemar (Durkalski 2003)", "statistic": statistic,
+            "p_value": float(stats.chi2.sf(statistic, 1))}
+
+
+def cluster_bootstrap(y_true, pred_a, pred_b, groups, n_boot: int = 2000, seed: int = 0,
+                      confidence: float = 0.95) -> dict:
+    """Paired session-level bootstrap of the difference A - B in detection rate and false-alarm
+    rate: whole sessions are resampled with replacement, so within-session correlation is kept.
+    Returns each difference with its percentile interval."""
+    y_true = np.asarray(y_true, dtype=bool)
+    pa, pb = np.asarray(pred_a, dtype=bool), np.asarray(pred_b, dtype=bool)
+    _, g = np.unique(np.asarray(groups), return_inverse=True)
+    n_groups = int(g.max() + 1)
+
+    def per_group(mask, values):
+        return np.bincount(g, weights=(mask & values).astype(float), minlength=n_groups)
+
+    att = np.bincount(g, weights=y_true.astype(float), minlength=n_groups)
+    ben = np.bincount(g, weights=(~y_true).astype(float), minlength=n_groups)
+    hits = per_group(y_true, pa) - per_group(y_true, pb)
+    alarms = per_group(~y_true, pa) - per_group(~y_true, pb)
+    rng = np.random.default_rng(seed)
+    w = rng.multinomial(n_groups, np.full(n_groups, 1 / n_groups), size=n_boot).astype(float)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        det = (w @ hits) / (w @ att)
+        fa = (w @ alarms) / (w @ ben)
+    q = [(1 - confidence) / 2 * 100, (1 + confidence) / 2 * 100]
+    out = {"clusters": n_groups, "n_boot": n_boot}
+    for name, point, boot in (("detection_rate_diff", hits.sum() / max(att.sum(), 1), det),
+                              ("false_alarm_rate_diff", alarms.sum() / max(ben.sum(), 1), fa)):
+        finite = boot[np.isfinite(boot)]
+        lo, hi = np.percentile(finite, q) if len(finite) else (np.nan, np.nan)
+        out[name] = float(point)
+        out[name + "_low"], out[name + "_high"] = float(lo), float(hi)
+    return out

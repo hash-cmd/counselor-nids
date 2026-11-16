@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from build_dataset import SOURCES, flowmeter  # noqa: E402
 
 from nids.capture import snort_offline  # noqa: E402
-from nids.counselor import CounselorNetwork, SnortCounselor  # noqa: E402
+from nids.counselor import LIVE, CounselorNetwork, SnortCounselor  # noqa: E402
 from nids.datasets.flow_features import CIC2018_TO_2017  # noqa: E402
 from nids.datasets.paths import PROJECT_ROOT, RESULTS_DIR  # noqa: E402
 from nids.services.live_capture import carries_payload  # noqa: E402
@@ -59,7 +59,7 @@ def ml_flags(flows: pd.DataFrame, min_accuracy: float, snort_rules: pd.Series | 
     advisors = []
     if snort_rules is not None:
         advisors = [SnortCounselor(dict(zip(sample["record_id"].astype(float), snort_rules[sample["index"]].to_numpy())))]
-    finals = CounselorNetwork(detectors, min_accuracy, window=0, cross_check_normal=True, suppress_fallback=True,
+    finals = CounselorNetwork(detectors, min_accuracy, window=0, learn_from_advice=False, **LIVE,
                               advisors=advisors, attack_advice_wins=bool(advisors)).run(sample, sample["record_id"])
     hit = np.logical_or.reduce([f["prediction"].to_numpy(dtype=bool) for f in finals.values()])
     flagged[sample.loc[hit, "index"].to_numpy()] = True

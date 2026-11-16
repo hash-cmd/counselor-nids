@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from build_dataset import PCAPS, Source, build  # noqa: E402
 
-from nids.counselor import CounselorNetwork  # noqa: E402
+from nids.counselor import LIVE, CounselorNetwork  # noqa: E402
 from nids.datasets.flow_features import CIC2018_TO_2017  # noqa: E402
 from nids.datasets.paths import PROJECT_ROOT, RESULTS_DIR  # noqa: E402
 from nids.evaluation import metrics  # noqa: E402
@@ -57,8 +57,8 @@ def main():
     detectors = [joblib.load(p) for p in sorted(MODELS.glob("*.joblib"))]
     # each detector's own verdict, before any counselling (run() below clears this history)
     alone = {d.name: d.detect(flows, flows["record_id"])["prediction"].to_numpy(dtype=bool) for d in detectors}
-    finals = CounselorNetwork(detectors, args.min_accuracy, window=0, cross_check_normal=True,
-                              suppress_fallback=True).run(flows, flows["record_id"])
+    finals = CounselorNetwork(detectors, args.min_accuracy, window=0, learn_from_advice=False,
+                              **LIVE).run(flows, flows["record_id"])
     flagged = np.logical_or.reduce([f["prediction"].to_numpy(dtype=bool) for f in finals.values()])
 
     report = {
