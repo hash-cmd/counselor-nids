@@ -19,6 +19,17 @@ confidently wrong, so its "normal" says little, while a trusted "attack" (a spec
 knows the attack, or a Snort rule) says a lot. Without it, the most confident counselor wins,
 which lets e.g. the flood detector overrule Snort on a website attack.
 
+``conflict_normal_advice`` (on by default, as in the paper): whether "normal" advice may resolve a
+conflict. The detectors are specialists, so a counselor's "normal" only means "not an attack I
+know" — the botnet detector has never seen GoldenEye, and its confident "normal" says nothing
+about it. Turned off, a conflict is settled only by "attack" advice, or else by the requester's
+own evidence (``fallback_threshold``).
+
+``fallback_threshold`` (an extension): an unresolved conflict is decided by the requester's own
+attack probability — the mean ``predict_proba`` of the cluster's selected classifiers — against
+this threshold (chosen on validation data), instead of the single best classifier's guess.
+``suppress_fallback`` is the special case of a threshold above 1.
+
 ``advisors`` (an extension) are counselors that only give advice and classify nothing
 themselves, e.g. Snort (``SnortCounselor``): anything with a ``name`` and an
 ``advise_many(timestamps, window)`` returning (found, prediction, confidence) arrays.
@@ -34,6 +45,12 @@ import pandas as pd
 from ..detector.detector import Detector
 
 
+# The configuration live mode runs (start.sh, deploy/systemd): cross-check on, conflicts settled
+# only by "attack" advice, else by the detector's own best classifier. Offline evaluations use it so
+# their numbers describe what is deployed.
+LIVE = dict(cross_check_normal=True, conflict_normal_advice=False)
+
+
 class CounselorNetwork:
     def __init__(
         self,
@@ -45,6 +62,8 @@ class CounselorNetwork:
         advisors=(),
         learn_from_advice: bool = True,
         attack_advice_wins: bool = False,
+        conflict_normal_advice: bool = True,
+        fallback_threshold: float | None = None,
     ):
         """window: look-back in timestamp units; the paper uses 2 seconds.
 
@@ -62,6 +81,8 @@ class CounselorNetwork:
         self.advisors = list(advisors)
         self.learn_from_advice = learn_from_advice  # the paper's steps 8.A-C
         self.attack_advice_wins = attack_advice_wins
+        self.conflict_normal_advice = conflict_normal_advice
+        self.fallback_threshold = fallback_threshold
 
     def _best_advice(self, requester: Detector, timestamps: np.ndarray, conflict: np.ndarray | None = None):
         """Best acceptable advice per timestamp: (found, prediction, counselor name) arrays.
@@ -104,8 +125,9 @@ class CounselorNetwork:
         found, prediction, counselor = self._best_advice(
             requester, results["timestamp"].to_numpy()[rows], conflict[rows])
 
-        # Conflicts take any acceptable advice; cross-checked normals only flip to attack.
-        use = found & (conflict[rows] | prediction)
+        # Conflicts take any acceptable advice (only "attack" advice without
+        # conflict_normal_advice); cross-checked normals only flip to attack.
+        use = found & ((conflict[rows] & (prediction | self.conflict_normal_advice)) | prediction)
         rows, prediction, counselor = rows[use], prediction[use], counselor[use]
         resolution = np.where(conflict[rows], "advice", "cross_check")
 
@@ -113,6 +135,19 @@ class CounselorNetwork:
         results.iloc[rows, results.columns.get_loc("resolution")] = resolution
         results.iloc[rows, results.columns.get_loc("counselor")] = counselor
 
+        if self.fallback_threshold is not None:
+            from ..detector.attribution import attack_proba
+            unresolved = np.flatnonzero((results["resolution"] == "fallback").to_numpy())
+            if len(unresolved):
+                m = requester.model
+                xt = m.transform(samples.iloc[unresolved][requester.features])
+                clusters = results["cluster"].to_numpy()[unresolved]
+                proba = np.zeros(len(unresolved))
+                for k in np.unique(clusters):
+                    sel = clusters == k
+                    proba[sel] = np.mean([attack_proba(m.classifiers[n], xt[sel])
+                                          for n in m.clusters[k].selected], axis=0)
+                results.iloc[unresolved, results.columns.get_loc("prediction")] = proba >= self.fallback_threshold
         if self.suppress_fallback:
             guess = (results["resolution"] == "fallback").to_numpy() & results["prediction"].to_numpy(dtype=bool)
             results.iloc[np.flatnonzero(guess), results.columns.get_loc("prediction")] = False

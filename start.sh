@@ -294,7 +294,7 @@ cmd_live() {
   # opt-in: keep a spreadsheet-friendly CSV of every connection and alert in logs/records/ (NIDS_RECORD=1)
   if [[ "${NIDS_RECORD:-0}" == 1 ]]; then run_service recorder "$NIDS" record; fi
   for model in "${models[@]}"; do
-    run_service "detect-$(basename "$model" .joblib)" "$NIDS" detect "$model" --sources live --cross-check --suppress-fallback "${counsel[@]}"
+    run_service "detect-$(basename "$model" .joblib)" "$NIDS" detect "$model" --sources live --cross-check --no-normal-advice "${counsel[@]}"
   done
   if (( snort )); then
     say "starting Snort on $target"

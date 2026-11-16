@@ -1,7 +1,7 @@
 """``nids`` command line: run the distributed services.
 
     nids observe                             # Observer
-    nids detect models/live/live_dos.joblib --sources live --cross-check --suppress-fallback
+    nids detect models/live/live_dos.joblib --sources live --cross-check --no-normal-advice
     nids extract --live wlan0 --source live --wait-for 3     # or --live capture.pcap
     nids monitor
     nids snort --pcap capture.pcap           # Snort + link its alerts to flows and ML verdicts
@@ -52,7 +52,7 @@ def detect(args) -> None:
     detector_service.run(
         bus.connect(args.redis), detector, args.sources, args.min_accuracy, args.window,
         args.cross_check, args.retrain_every, args.advice_wait, args.exit_on_end,
-        suppress_fallback=args.suppress_fallback, snort_counselor=args.snort_counselor, model_path=args.model)
+        suppress_fallback=args.suppress_fallback, normal_advice=not args.no_normal_advice, snort_counselor=args.snort_counselor, model_path=args.model)
 
 
 def monitor(args) -> None:
@@ -153,6 +153,9 @@ def main(argv=None) -> None:
     p.add_argument("--cross-check", action="store_true", help="cross-check normal verdicts")
     p.add_argument("--suppress-fallback", action="store_true",
                    help="treat unresolved-conflict guesses as normal (fewer false alarms on live traffic)")
+    p.add_argument("--no-normal-advice", action="store_true",
+                   help="settle conflicts only on 'attack' advice: a specialist's 'normal' only means "
+                        "'not an attack I know' (otherwise the detector's own best classifier decides)")
     p.add_argument("--snort-counselor", action="store_true",
                    help="take Snort's advice on conflicts (trusted attack advice wins); needs `nids snort`")
     p.add_argument("--retrain-every", type=int, default=0, help="retrain after N learned signatures")

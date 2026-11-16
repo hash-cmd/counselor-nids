@@ -204,6 +204,7 @@ def run(
     suppress_fallback: bool = False,
     snort_counselor: bool = False,
     model_path: Path | None = None,
+    normal_advice: bool = True,
 ) -> None:
     """``model_path``: watch this file and switch to a retrained model once one is
     installed there (learn_feedback.py), without a restart."""
@@ -235,7 +236,8 @@ def run(
                         continue
                     frame = bus.decode_frame(bus.field(fields, "frame"))
                     process(r, detector, frame, state, min_accuracy, window, cross_check, suppress_fallback,
-                            snort_counselor, learn=bool(retrain_every), tau_alert=tau_alert)
+                            snort_counselor, learn=bool(retrain_every), tau_alert=tau_alert,
+                            normal_advice=normal_advice)
                     detector.trim_history(max_history)
                     pending = sum(len(y) for _, y in detector.new_signatures)
                     if retrain_every and pending >= retrain_every:
@@ -250,7 +252,7 @@ def run(
 
 
 def process(r, detector, frame, state, min_accuracy, window, cross_check, suppress_fallback=False,
-            snort_counselor=False, learn=False, tau_alert=None) -> pd.DataFrame:
+            snort_counselor=False, learn=False, tau_alert=None, normal_advice=True) -> pd.DataFrame:
     """Classify a batch and resolve its conflicts with the counselors. ``snort_counselor``:
     Snort advises on conflicts and a trusted "attack" advice wins (counselor/network.py).
     ``learn``: keep advised samples for retraining — only when the service retrains, or
@@ -266,7 +268,8 @@ def process(r, detector, frame, state, min_accuracy, window, cross_check, suppre
     network = CounselorNetwork([detector, *counselors], min_accuracy, window,
                                cross_check_normal=cross_check, suppress_fallback=suppress_fallback,
                                advisors=[RedisSnortCounselor(r)] if snort_counselor else [],
-                               attack_advice_wins=snort_counselor, learn_from_advice=learn)
+                               attack_advice_wins=snort_counselor, learn_from_advice=learn,
+                               conflict_normal_advice=normal_advice)
     final = network.resolve(detector, frame, results)
     # possible unseen attacks: connections this detector judged normal but whose traffic is far
     # from anything it learned (novelty above the strict alert threshold)
