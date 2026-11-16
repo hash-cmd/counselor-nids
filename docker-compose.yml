@@ -2,7 +2,7 @@
 #
 #   docker compose up --build        # first run: builds the images, then serves
 #   docker compose up                # afterwards
-#   -> dashboard on http://localhost:3000   (login: admin / admin — change it)
+#   -> dashboard on http://localhost:3000   (login: admin; password printed by `docker compose logs api` on first run)
 #
 # This runs the whole dashboard and the recording tests, with Snort as a counselor
 # (Snort 3 is compiled into the API image). Open "Test with recordings" to play the
@@ -36,9 +36,9 @@ services:
       # A random secret is generated and kept in the db volume on first run.
       # Set DJANGO_SECRET_KEY in a .env file to pin your own.
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
-      # The dashboard login, created on first run. Change the password after signing in.
+      # The dashboard login, created on first run. Unset password: a random one is generated and logged once.
       DJANGO_SUPERUSER_USERNAME: ${NIDS_ADMIN_USER:-admin}
-      DJANGO_SUPERUSER_PASSWORD: ${NIDS_ADMIN_PASSWORD:-admin}
+      DJANGO_SUPERUSER_PASSWORD: ${NIDS_ADMIN_PASSWORD:-}
       # plain http on localhost; set to "true" behind an HTTPS proxy
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,api

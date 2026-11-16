@@ -21,9 +21,10 @@ fi
 python manage.py migrate --noinput
 python manage.py collectstatic --noinput -v 0
 
-# Create the dashboard login on first run (change the password after signing in).
+# Create the dashboard login on first run. With no NIDS_ADMIN_PASSWORD set, a random password
+# is generated and printed once in this container's log (docker compose logs api).
 USER="${DJANGO_SUPERUSER_USERNAME:-admin}"
-PASS="${DJANGO_SUPERUSER_PASSWORD:-admin}"
+PASS="${DJANGO_SUPERUSER_PASSWORD:-}"
 MAIL="${DJANGO_SUPERUSER_EMAIL:-admin@example.com}"
 python - "$USER" "$PASS" "$MAIL" <<'PY'
 import os
@@ -34,11 +35,17 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 from django.contrib.auth import get_user_model
 
+import secrets
+
 name, password, email = sys.argv[1:4]
 User = get_user_model()
 if not User.objects.filter(username=name).exists():
+    generated = not password
+    password = password or secrets.token_urlsafe(12)
     User.objects.create_superuser(name, email, password)
-    print(f"created dashboard login '{name}' (change its password after signing in)")
+    print(f"created dashboard login '{name}'")
+    if generated:
+        print(f"  generated password (shown once): {password}")
 else:
     print(f"dashboard login '{name}' already exists")
 PY
