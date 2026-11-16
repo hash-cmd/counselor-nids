@@ -30,7 +30,7 @@ dashboard and tests — live capture of the machine's own Wi-Fi needs a Linux or
 containers instead — one command, with Snort included:
 
 ```bash
-docker compose up --build     # dashboard on http://localhost:3000 (login admin / admin)
+docker compose up --build     # dashboard on http://localhost:3000 (login admin; password: docker compose logs api)
 ```
 
 The first build compiles Snort and takes 10-20 minutes; see [Dashboard](#dashboard) below.
@@ -65,14 +65,17 @@ network (wlan0) ┤                                            ├─> correlato
 
 **The detectors.** Each detector clusters traffic (K-Means), then for every cluster picks the
 most accurate of five classifiers (naive Bayes, decision trees, random forest). If its
-classifiers disagree on a connection, it asks the other detectors (its counselors) and takes
-confident advice. With cross-check on, a "normal" verdict is also checked with the others, so
-an attack one specialist never learned is still caught by the specialist that did.
+classifiers disagree on a connection, it asks the other detectors (its counselors). Only
+"attack" advice settles the disagreement (`--no-normal-advice`): a specialist's "normal" only
+means "not an attack I know", so the botnet detector's "normal" says nothing about a flood.
+Without attack advice, the detector's own best classifier decides. With cross-check on, a
+"normal" verdict is also checked with the others, so an attack one specialist never learned is
+still caught by the specialist that did.
 
 | Detector | Model | Knows |
 |---|---|---|
-| Flood detector | `models/live/live_dos.joblib` | DoS: GoldenEye, Slowloris, Hulk, SlowHTTPTest |
-| Break-in detector | `models/live/live_access.joblib` | FTP/SSH password guessing, website attacks |
+| Flood detector | `models/live/live_dos.joblib` | DoS: GoldenEye, Slowloris, Hulk, SlowHTTPTest; DDoS (LOIC) |
+| Break-in detector | `models/live/live_access.joblib` | FTP/SSH password guessing, website attacks, port scans* |
 | Botnet detector | `models/live/live_bot.joblib` | infected hosts calling their command-and-control server |
 
 **Snort and the AI together.** Each Snort alert is linked to its connection (both addresses
@@ -87,61 +90,99 @@ the two hosts within ±30 s. The AI then gives its verdict on that connection:
 
 ## Detection results
 
-On `real-attacks-2018.pcap`, the whole system runs on real attack traffic it never trained
-on. The recording holds the late minutes of every CSE-CIC-IDS2018 attack, and the test covers
-the flow meter, the AI detectors, Snort with the project's rules, and alert linking.
-Reproduce it with `python scripts/live_detectors/evaluate_capture.py --no-community`.
+**How the detectors are tested.** Flows from both labs (CICIDS2017, CSE-CIC-IDS2018) are
+de-duplicated (16% were exact copies), then split by time within every attack and recording:
+the earliest 60% for training, the next 20% for validation, the latest 20% for test. Every
+choice (classifiers per cluster, novelty thresholds, whether new models replace the installed
+ones) is made on validation; the test split is scored once, at the end. Reproduce it with
+`python scripts/live_detectors/train.py --evaluate-only --ablation`.
+
+On the test split the installed system catches **97.9%** of attack flows (95% interval
+97.8-98.0%), with false alarms on **18 of 293,142** normal flows (0.006%). Over five training
+seeds (`seeds_summary.py`; the split is the same, the seed changes K-Means and the random trees)
+detection is **98.2% ± 0.2%** and false alarms **0.005% ± 0.001%**. Slowloris is the only
+unstable attack: 90.0% ± 3.5% (86-93%), and the installed seed is the lowest. Per attack, for
+the installed models:
+
+| Attack | Test flows | Caught |
+|---|---|---|
+| DoS Hulk | 23,436 | 98.1% |
+| Port scan | 18,327 | 98.2% |
+| DDoS | 12,758 | 99.8% |
+| DoS GoldenEye | 4,436 | 98.1% |
+| Botnet | 3,588 | 98.8% |
+| DoS Slowloris | 3,176 | 86.2% |
+| SSH brute force | 1,521 | 98.9% |
+| DoS SlowHTTPTest | 1,000 | 99.4% |
+| FTP brute force | 810 | 100.0% |
+| Web attacks | 453 | 91.4% |
+
+**Read flow counts with care.** Flows of one attack session are near-copies: in the 2018 lab,
+14,529 GoldenEye flows come from 11 sessions (host pair x minute). Comparisons between
+configurations therefore use session-level tests (`nids.evaluation.clustered_mcnemar`,
+`cluster_bootstrap`), not per-flow p-values.
+
+**The whole pipeline on a recording.** On `real-attacks-2018.pcap` (the late minutes of every
+CSE-CIC-IDS2018 attack, with normal traffic), the test covers the flow meter, the AI
+detectors, Snort with the project's rules, and alert linking. It is the same lab the detectors
+learned from, so it tests the pipeline, not a new network. Reproduce it with
+`python scripts/live_detectors/evaluate_capture.py --no-community`.
 
 | Traffic | Flows | AI | Snort | Either |
 |---|---|---|---|---|
-| DoS GoldenEye | 1,822 | 99.1% | 4.9% | 99.1% |
+| DoS GoldenEye | 1,822 | 100.0% | 4.9% | 100.0% |
 | DoS Hulk | 2,861 | 99.9% | 48.2% | 99.9% |
 | DoS SlowHTTPTest | 4,450 | 100.0% | 99.8% | 100.0% |
-| DoS Slowloris | 760 | 34.7% | 0.0% | 34.7% |
+| DoS Slowloris | 760 | 57.5% | 0.0% | 57.5% |
 | FTP brute force | 5,040 | 100.0% | 99.8% | 100.0% |
-| SSH brute force | 359 | 98.3% | 88.9% | 98.9% |
+| SSH brute force | 359 | 100.0% | 88.9% | 100.0% |
 | Web attacks | 4 | 4 of 4 | 4 of 4 | 4 of 4 |
 | Botnet | 540 | 99.6% | 0.0% | 99.6% |
 | **Normal (false alarms)** | 1,570 | **0.0%** | **0.3%** | **0.3%** |
 
-On the test split, the latest 20% of every attack, the detectors catch **99.1%** of attack
-flows, with false alarms on **2 of 5,192** normal flows (0.04%).
+With only 1,570 normal flows, "0.0%" means fewer than about 0.2% (95% upper bound); the test
+split above is the reliable false-alarm figure.
 
 - **The two checks cover each other.** The AI catches the floods and the botnet that Snort's
   rules miss. Snort covers website attacks with its payload rules.
-- **Slowloris is the weak spot,** and how much of it is caught depends on the attack's phase:
-  85% of test flows across the attack, 60% of the complete last five minutes, and 35% of the
-  last three, when the attack winds down (above). With the community rules on, Snort's
-  Challenge-ACK rule lifts the last three minutes to 69.5% "either". Retraining on correctly
-  measured connections (see [Retraining](#retraining-the-detectors)) raised it from 56% to 85%
-  on the test split, and from 50% to 60% on the last five minutes.
-- **Website attacks are Snort's job.** The AI has only ~150 website-attack training flows,
-  too few to rely on, so the project's rules lead:
-  - SQL injection: UNION SELECT; a quote followed by an AND/OR comparison; ORDER BY column
-    probing; `information_schema`;
-  - cross-site scripting: `<script`, event handlers, `javascript:`, in the URL or a form;
-  - website login brute force: 20 password posts from one source in 60 s.
-
-  On the whole 2018 website-attack capture they alert on **188 of the attacker's 207
-  connections (90.8%)**, and on nothing else.
+- **Slowloris is the weak spot.** 86% of test flows across the attack, but 57.5% of the last
+  minutes in the recording, when the attack winds down and its connections look like idle
+  keep-alives.
+- **Website attacks: the AI and Snort both.** The AI catches 91.4% of test web-attack flows.
+  The project's rules cover SQL injection (UNION SELECT; a quote followed by an AND/OR
+  comparison; ORDER BY column probing; `information_schema`), cross-site scripting (`<script`,
+  event handlers, `javascript:`) and website login brute force (20 password posts from one
+  source in 60 s). They were written from the 2018 capture, so they are scored on the 2017
+  lab's web attacks, which they were not written from (`evaluate_rules.py`): they alert in
+  **60 of 66 attack sessions (91%)** but on only 133 of 2,054 attack flows (6.5%), since the
+  matching requests concentrate on a few connections, and on 8 of 31,605 normal web flows.
 - **A botnet host it never saw.** On a third infected host whose traffic was never used for
-  training (`cross_host.py`), the system catches **99.8%** of its 15,238 botnet flows, with
-  false alarms on **2 of its 4,307** normal flows.
+  training (`cross_host.py`), the system catches **99.9%** of its 15,238 botnet flows, with
+  false alarms on **3 of its 4,307** normal flows.
+- **Destination port matters.** Trained without it (`train.py --drop-port`), overall detection
+  is about the same, but false alarms rise six-fold and SlowHTTPTest and botnet detection drop:
+  the detectors partly rely on the port, so a service on an unusual port is a known gap.
 
 **Keeping false alarms down on live traffic:**
 
 - **Connection-only flows don't go to the AI.** Port scans, failed connections and bare SYN
   floods carry no data. The detectors never trained on such flows and only guess on them (one
   scan produced ~50,000 false alarms), so they're left to Snort's scan detection.
-- **Unresolved disagreements count as normal.** When a detector's classifiers disagree and no
-  counselor can advise, its "attack" fallback is a blind guess, so `--suppress-fallback` drops
-  it.
+- **Unresolved disagreements: a trade-off you can choose.** By default the detector's best
+  classifier decides them. `--suppress-fallback` counts them as normal instead: on the lab test
+  split that removed about 11 of 18 false alarms in 293,000 normal flows, but dropped detection
+  from 98% to 88% on the latest traffic (Hulk from 98% to 71%), as the detectors disagree more
+  on traffic that drifts from what they learned. Add it in `start.sh` and the detector service if
+  your network shows many fallback false alarms.
 - **Measure it on your network.** The Overview's false-alarm panel reports alarms per 1,000
   connections from the alert journal. Mark your own attack tests there, so they aren't counted.
 
-**Limits.** The detectors learned from one lab, with one attacker per attack type, and the
-botnet detector knows one botnet family (Ares). They don't cover DDoS or infiltration yet.
-Port scans and payload exploits are Snort's job.
+\* Port-scan flows are in the break-in detector's training data, but most scan traffic is
+connection-only and is not sent to the AI live (below), so in practice scans are Snort's job.
+
+**Limits.** The detectors learned from two labs (CICIDS2017 and CSE-CIC-IDS2018), with few
+attackers per attack type, and the botnet detector knows one botnet family (Ares). They don't
+cover infiltration. Payload exploits are Snort's job.
 
 ## Teaching the AI from your verdicts
 
@@ -243,7 +284,7 @@ Snort 3 compiled into the image:
 
 ```bash
 docker compose up --build             # first run builds the images (compiling Snort: 10-20 min)
-# -> dashboard on http://localhost:3000, login admin / admin (change it)
+# -> dashboard on http://localhost:3000, login admin, password printed once by `docker compose logs api` (or set NIDS_ADMIN_PASSWORD)
 ```
 
 The secret key and the login are created automatically on first run. This runs the whole
@@ -266,10 +307,12 @@ live capture:
 python scripts/live_detectors/fetch_captures.py     # ~1.3 GB of CSE-CIC-IDS2018 single-host captures
 python scripts/live_detectors/build_dataset.py      # attack windows found in the packets; flow meter; labels
 python scripts/live_detectors/build_cicids2017.py   # optional second lab: all CICIDS2017 captures (~50 GB)
-python scripts/live_detectors/train.py              # 80% earliest flows to train, 20% latest to test
+python scripts/live_detectors/train.py              # time-ordered 60/20/20 train/validation/test; installs if the gate passes
 python scripts/live_detectors/cross_host.py         # botnet test on an infected host never trained on
 python scripts/live_detectors/make_demo_capture.py  # data/pcap/real-attacks-2018.pcap (held-out minutes)
 python scripts/live_detectors/evaluate_capture.py   # whole-system test on a recording
+python scripts/live_detectors/evaluate_rules.py     # project Snort rules on the 2017 lab's web attacks (held out)
+python scripts/live_detectors/seeds_summary.py      # spread over seeds (runs: train.py --evaluate-only --seed N --results seeds/seed_N)
 ```
 
 Data sources and layout are in [docs/datasets.md](docs/datasets.md).
@@ -279,11 +322,16 @@ Data sources and layout are in [docs/datasets.md](docs/datasets.md).
   old and was cut wherever the timer fired, so slow attacks were split at random and results
   changed between runs. Recordings now use packet time only, the way live capture already
   measured.
-- **Promotion gate.** `train.py` tests the installed detectors on the same test flows, and
-  installs the new ones only if false alarms don't rise and no attack type's detection drops
-  by more than 2 points. Attack types the installed detectors never learned must reach 80%.
+- **Promotion gate, on validation only.** `train.py` tests the installed detectors on the same
+  *validation* flows, and installs the new ones only if false alarms don't rise and no attack
+  type's detection drops by more than 2 points (session-level McNemar in `mcnemar.json`). The
+  test split never decides anything: it is scored once, for reporting. Installed models
+  trained under a different split have seen this run's flows, so they are not used as the bar;
+  the candidate must then reach the minimum (80% per attack type, at most 0.2% false alarms).
   `--force` overrides the gate, and `--only live_bot` retrains one detector and keeps the
-  others.
+  others (same split only).
+- **Options.** `--ablation` also scores the conflict-handling rules on the test split
+  (`conflict_rules.csv`); `--drop-port` trains without the destination port.
 - **Model integrity.** Model files are pickles, and loading one runs code. Promotion writes
   `models/live/SHA256SUMS`, and live mode refuses to load any model that doesn't match it.
 
