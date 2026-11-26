@@ -79,7 +79,7 @@ def run(r: redis.Redis, exit_on_end: bool = False, block_ms: int = 1000) -> int:
                     _feed(r, fields, source or "")
                 for name, sources in subscriptions(r).items():
                     if source in sources:
-                        r.xadd(bus.inbox(name), fields)
+                        r.xadd(bus.inbox(name), fields, maxlen=bus.STREAM_KEPT, approximate=True)
                         forwarded += 1
                 if exit_on_end and is_end:
                     return forwarded

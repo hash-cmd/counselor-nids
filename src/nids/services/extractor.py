@@ -19,9 +19,10 @@ def wait_for_subscribers(r: redis.Redis, count: int, timeout: float = 120) -> No
 
 def publish(r: redis.Redis, frame: pd.DataFrame, source: str, timestamp_column: str = "record_id") -> None:
     frame = frame.assign(timestamp=frame[timestamp_column].astype(float))
-    r.xadd(bus.UNKNOWN, {"kind": bus.BATCH, "source": source, "frame": bus.encode_frame(frame)})
+    r.xadd(bus.UNKNOWN, {"kind": bus.BATCH, "source": source, "frame": bus.encode_frame(frame)},
+           maxlen=bus.STREAM_KEPT, approximate=True)
 
 
 def end(r: redis.Redis, source: str) -> None:
-    r.xadd(bus.UNKNOWN, {"kind": bus.END, "source": source})
+    r.xadd(bus.UNKNOWN, {"kind": bus.END, "source": source}, maxlen=bus.STREAM_KEPT, approximate=True)
 

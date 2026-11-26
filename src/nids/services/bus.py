@@ -28,6 +28,12 @@ ALERTS = f"{PREFIX}:alerts"
 ALERTS_KEPT = 50_000  # entries kept per alert stream (ML and Snort)
 CONNECTIONS = f"{PREFIX}:connections"  # every connection, flagged or not (only when the feed is on)
 CONNECTIONS_KEPT = 20_000              # rolling window for the live-traffic feed
+# Flow batches kept in nids:unknown and each nids:inbox:<detector>. Readers move forward from
+# the oldest entry and never delete what they read, so without a cap these streams grow without
+# end (~1.4 GB in three days on a busy server, until the OOM killer stops Redis). 20,000 batches
+# is hours of backlog at live rates (~4 KB each, ~85 MB per stream); a reader further behind than
+# that loses its oldest unread batches rather than Redis losing everything.
+STREAM_KEPT = 20_000
 FEED_ALL = f"{PREFIX}:feed_all"        # set while the full-traffic feed is turned on (dashboard toggle)
 SNORT_ACTIVE = f"{PREFIX}:snort:active"  # set while the Snort correlator still needs advice
 LIVE = f"{PREFIX}:live"  # {"target", "started_at"} while capturing a network interface
