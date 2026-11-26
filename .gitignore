@@ -54,3 +54,6 @@ models/window_taught*/
 logs/snort_teach*.jsonl
 logs/snort-learning*.json
 data/processed/live/live_tool_attacks.pkl
+models/window_slim/
+data/processed/live/real_attacks_*.pkl
+data/pcap/real-s2/

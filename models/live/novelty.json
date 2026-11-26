@@ -3,19 +3,19 @@
  "split": "validation",
  "detectors": {
   "live_dos": {
-   "tau": 10.2212,
-   "tau_alert": 10.2212,
-   "median_benign": 3.0566
+   "tau": 14.0505,
+   "tau_alert": 14.0505,
+   "median_benign": 3.6986
   },
   "live_access": {
-   "tau": 11.9642,
-   "tau_alert": 11.9642,
-   "median_benign": 3.3066
+   "tau": 13.1601,
+   "tau_alert": 13.1601,
+   "median_benign": 3.989
   },
   "live_bot": {
-   "tau": 14.5127,
-   "tau_alert": 14.5127,
-   "median_benign": 4.2596
+   "tau": 15.2242,
+   "tau_alert": 15.2242,
+   "median_benign": 4.6125
   }
  }
 }

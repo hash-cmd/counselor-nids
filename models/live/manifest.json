@@ -1,5 +1,5 @@
 {
-  "promoted_at": "2026-11-10T16:16:47+00:00",
+  "promoted_at": "2026-11-26T10:20:56+00:00",
   "protocol": "time-ordered 60/20/20 within (label, capture), deduplicated; selection+gate on validation",
   "knowledge": {
     "live_dos": [
@@ -20,65 +20,65 @@
     ]
   },
   "metrics": {
-    "accuracy": 0.9959768038891815,
-    "detection_rate": 0.9792676785842745,
-    "false_alarm_rate": 6.140368831487811e-05,
-    "precision": 0.9997356129373403,
-    "recall": 0.9792676785842745,
-    "f1": 0.9893958004753355,
-    "mcc": 0.9869939960064944,
-    "detection_rate_low": 0.9781815999708234,
-    "detection_rate_high": 0.9803007830145072,
-    "false_alarm_rate_low": 3.884281200883378e-05,
-    "false_alarm_rate_high": 9.706721360307927e-05
+    "accuracy": 0.9970700166876869,
+    "detection_rate": 0.9852285714285715,
+    "false_alarm_rate": 0.00010233948052479686,
+    "precision": 0.9995651921850542,
+    "recall": 0.9852285714285715,
+    "f1": 0.9923451034562146,
+    "mcc": 0.990573023766311,
+    "detection_rate_low": 0.9843078990741555,
+    "detection_rate_high": 0.9860959899747127,
+    "false_alarm_rate_low": 7.169001907196933e-05,
+    "false_alarm_rate_high": 0.00014609051809339304
   },
   "by_label": {
-    "Benign": 6.140368831487811e-05,
-    "DoS-Hulk": 0.9809694487113841,
-    "PortScan": 0.9818300867572434,
-    "DDoS": 0.9975701520614516,
-    "DoS-GoldenEye": 0.9806131650135257,
-    "Bot": 0.987736900780379,
-    "DoS-Slowloris": 0.8617758186397985,
-    "SSH-Bruteforce": 0.9888231426692965,
-    "DoS-SlowHTTPTest": 0.994,
+    "Benign": 0.00010233948052479686,
+    "DoS-Hulk": 0.9971254649983091,
+    "PortScan": 0.9705914094539175,
+    "DDoS": 1.0,
+    "DoS-GoldenEye": 0.9997745716862038,
+    "Bot": 0.988015607580825,
+    "DoS-Slowloris": 0.8860407659048796,
+    "SSH-Bruteforce": 0.9993425378040762,
+    "DoS-SlowHTTPTest": 0.999,
     "FTP-BruteForce": 1.0,
-    "Web-attack": 0.9139072847682119
+    "Web-attack": 0.9869848156182213
   },
   "validation_by_label": {
-    "Benign": 4.434771336367172e-05,
-    "DoS-Hulk": 0.9995732878173672,
-    "PortScan": 0.9995088944668776,
-    "DDoS": 0.9994513246590375,
-    "DoS-GoldenEye": 0.996844003606853,
+    "Benign": 2.7290900531490287e-05,
+    "DoS-Hulk": 1.0,
+    "PortScan": 1.0,
+    "DDoS": 0.9999216178084339,
+    "DoS-GoldenEye": 0.9997745716862038,
     "Bot": 1.0,
     "DoS-Slowloris": 1.0,
     "SSH-Bruteforce": 1.0,
-    "DoS-SlowHTTPTest": 0.995,
+    "DoS-SlowHTTPTest": 0.997,
     "FTP-BruteForce": 1.0,
-    "Web-attack": 0.9602649006622517
+    "Web-attack": 0.9978308026030369
   },
   "test_flows": {
     "Benign": 293142,
-    "DoS-Hulk": 23436,
-    "PortScan": 18327,
+    "DoS-Hulk": 23656,
+    "PortScan": 18532,
     "DDoS": 12758,
     "DoS-GoldenEye": 4436,
     "Bot": 3588,
-    "DoS-Slowloris": 3176,
+    "DoS-Slowloris": 3238,
     "SSH-Bruteforce": 1521,
     "DoS-SlowHTTPTest": 1000,
     "FTP-BruteForce": 810,
-    "Web-attack": 453
+    "Web-attack": 461
   },
   "labs": [
     "2018",
     "2017"
   ],
   "sha256": {
-    "live_access.joblib": "4023cee685696ffdc31f18cf9cafea6bc00ddb71980c328d427d035e243d4823",
-    "live_bot.joblib": "8eb35ba7210215f141f2cdff223693ba3b884202c8f88a5558069007a7af03ff",
-    "live_dos.joblib": "e1fd66492aba1dcc4071570419a3d46b85ec5bbfb5cde8d97695cdf81c90c035"
+    "live_access.joblib": "a93b808ac72f368a632c10ae8d37df553311b8e188fcde60a07fc197b8cef387",
+    "live_bot.joblib": "c992d159151e725fd85d7e9bda76e45f47af79ff23ff812461147b236d21c62c",
+    "live_dos.joblib": "09e691f34436c2aa8878a99268f092dea7b12ab1c2e4d1f3130c904da8f47d83"
   },
   "args": {
     "train_share": 0.6,
@@ -97,8 +97,13 @@
     "max_fa_rise": 0.0005,
     "force": false,
     "evaluate_only": false,
-    "results": "live",
-    "ablation": false,
+    "results": "window_real",
+    "models_out": "../../models/window",
+    "ablation": true,
+    "extra_flows": [
+      "../../data/processed/live/real_attacks_s3.pkl"
+    ],
+    "no_window": false,
     "drop_port": false
   }
 }

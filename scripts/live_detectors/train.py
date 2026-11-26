@@ -226,6 +226,9 @@ def main():
                              "folder to train a candidate set without touching the deployed models.")
     parser.add_argument("--ablation", action="store_true",
                         help="also compare conflict-handling rules on the test split (conflict_rules.csv)")
+    parser.add_argument("--extra-flows", type=Path, action="append", default=[],
+                        help="extra labelled flow pickles to fold into training (e.g. real-interface\n"
+                             "attack captures); given lab tag 'extra'. Repeatable.")
     parser.add_argument("--no-window", action="store_true",
                         help="omit the per-source window features (reproduce the single-flow baseline)")
     parser.add_argument("--drop-port", action="store_true",
@@ -242,6 +245,11 @@ def main():
                  "have seen this run's validation/test flows; retrain all detectors")
 
     flows = load(sorted(set(args.labs) | set(args.train_labs or []) | set(args.test_labs or [])))
+    for extra in args.extra_flows:
+        e = pd.read_pickle(extra).assign(lab="extra")
+        e["is_attack"] = e["label"] != "Benign"
+        flows = pd.concat([flows, e], ignore_index=True)
+        print(f"folded {len(e):,} extra flows from {extra}")
     flows, cleaning = dp.prepare(flows, features)
     print("cleaning:", cleaning)
     signatures, val, test = dp.three_way_split(flows, args.train_share, args.val_share)
