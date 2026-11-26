@@ -124,7 +124,8 @@ def main():
         old = joblib.load(path)
         before = sure_attack(old, flows)
         candidate = copy.deepcopy(old)
-        X = pd.concat([flows[candidate.features]] * args.weight, ignore_index=True)
+        from nids.detector.detector import select_features
+        X = pd.concat([select_features(flows, candidate.features)] * args.weight, ignore_index=True)
         candidate.new_signatures = [(X, np.tile(y, args.weight))]
         print(f"retraining {old.name} on {len(X):,} feedback rows…", flush=True)
         candidate.retrain()

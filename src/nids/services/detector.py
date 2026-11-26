@@ -24,6 +24,7 @@ from ..detector.detector import Detector
 from ..detector.novelty import novelty_scores
 from . import bus
 from . import feedback
+from . import snort_teacher
 from .novelty_live import load_taus
 from .snort_counselor import RedisSnortCounselor, wait_for_snort
 
@@ -144,6 +145,10 @@ def record(r: redis.Redis, name: str, frame: pd.DataFrame, final: pd.DataFrame, 
     if len(store_rows):  # keep their flows so a verdict or explanation is available later
         keep = r.pipeline()
         feedback.remember_flows(keep, frame, store_rows)
+        keep.execute()
+    if snort_teacher.ENABLED:  # keep every judged flow briefly, so Snort can label disputes
+        keep = r.pipeline()
+        feedback.remember_all(keep, frame)
         keep.execute()
 
     # Flows flagged by any detector, counted once: breakdowns grow only for flows

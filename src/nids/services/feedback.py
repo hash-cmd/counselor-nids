@@ -40,6 +40,18 @@ def remember_flows(pipe, frame: pd.DataFrame, rows) -> None:
         pipe.set(f"{FLOW}{int(frame.at[row, 'record_id'])}", record, nx=True, ex=FLOW_TTL)
 
 
+SHORT_TTL = 180  # seconds; long enough for the Snort bridge to link an alert to its flow
+
+
+def remember_all(pipe, frame: pd.DataFrame, ttl: int = SHORT_TTL) -> None:
+    """Keep every judged flow's measurements briefly, so a Disputed Snort alert that arrives
+    seconds later can still read the flow it is about (``snort_teacher``). ``nx=True`` leaves a
+    flagged flow's 7-day copy in place."""
+    for row in frame.index:
+        record = frame.loc[[row]].to_json(orient="records")[1:-1]
+        pipe.set(f"{FLOW}{int(frame.at[row, 'record_id'])}", record, nx=True, ex=ttl)
+
+
 def mark(r: redis.Redis, record_id: int, verdict: str, note: str = "", path: Path = DEFAULT_FILE) -> dict:
     """Record a verdict on a flagged connection. Raises ValueError if the verdict is
     unknown; the entry is still recorded (without measurements) if the flow has expired."""

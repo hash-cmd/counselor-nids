@@ -36,6 +36,7 @@ import redis
 
 from . import bus, flow_index
 from . import snort_counselor as counsel
+from . import snort_teacher
 from .detector import RemoteCounselor
 
 ALERTS = f"{bus.PREFIX}:snort:alerts"
@@ -216,6 +217,10 @@ class Correlator:
             agreement = "no_verdict"
         else:
             agreement = "confirmed" if verdict["attack"] else "disputed"
+        if agreement == "disputed":
+            # Snort caught an attack the AI judged normal: record it as a labelled attack the
+            # detectors retrain on (snort_teacher; no-op unless NIDS_SNORT_TEACH=1)
+            snort_teacher.record_disputes(self.r, record_ids, alert.get("msg", ""))
         entry = {
             "seconds": alert.get("seconds", 0), "msg": alert.get("msg", ""),
             "gid": alert.get("gid", 0), "sid": alert.get("sid", 0), "priority": alert.get("priority", 0),
