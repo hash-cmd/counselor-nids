@@ -49,3 +49,8 @@ backend/.env
 /docs/MSc_Thesis_Structure*
 /docs/Comparison.docx
 /docs/figures/
+models/window/
+models/window_taught*/
+logs/snort_teach*.jsonl
+logs/snort-learning*.json
+data/processed/live/live_tool_attacks.pkl
