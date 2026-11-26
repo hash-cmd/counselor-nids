@@ -23,7 +23,9 @@ import pandas as pd
 import redis
 
 from ..datasets.flow_features import python_flows_to_2017
+from ..datasets.window_features import RollingWindow
 from . import bus, extractor, flow_index
+from .rate_detector import RateAlarm
 
 
 def _numeric(df: pd.DataFrame) -> pd.DataFrame:
@@ -110,9 +112,19 @@ def interface_up(name: str) -> bool:
 FLUSH_INTERVAL = 2.0  # seconds; publish pending flows at least this often on a quiet network
 
 
+def _emit_rate_alerts(r: redis.Redis, alerts: list[dict]) -> None:
+    if not alerts:
+        return
+    pipe = r.pipeline()
+    for a in alerts:
+        pipe.xadd(bus.ALERTS, a | {"time": time.time()}, maxlen=bus.ALERTS_KEPT, approximate=True)
+    pipe.execute()
+
+
 def _stream(r: redis.Redis, out: str, process: subprocess.Popen, source: str, batch_size: int,
             drop_empty_flows: bool, next_id: int, heartbeat=None, flush_interval: float = FLUSH_INTERVAL,
-            now=time.monotonic) -> tuple[int, int]:
+            now=time.monotonic, window: RollingWindow | None = None, rate: RateAlarm | None = None
+            ) -> tuple[int, int]:
     """Follow one flow-meter run and publish its flows. Returns (flows sent, next record id).
 
     Flows are published when ``batch_size`` accumulate, when the flow meter stops, or every
@@ -142,6 +154,15 @@ def _stream(r: redis.Redis, out: str, process: subprocess.Popen, source: str, ba
         flows["record_id"] = range(next_id, next_id + len(flows))
         flow_index.index_flows(r, flows.rename(columns={"conn_dst_port": "dst_port"}))
         next_id += len(flows)
+        # Rate alarm and window features see the WHOLE batch — connection-only flows included —
+        # before empties are dropped, so scans and floods count toward a source's behaviour.
+        if rate is not None:
+            _emit_rate_alerts(r, rate.feed(flows))
+            rate.trim()
+        if window is not None:
+            ordered = flows.sort_values("flow_start", kind="stable")
+            flows = flows.join(window.update(ordered))
+            window.trim()
         if drop_empty_flows:
             flows = flows[carries_payload(flows)]
         if len(flows):
@@ -180,6 +201,12 @@ def capture(r: redis.Redis, interface_or_pcap: str, source: str, batch_size: int
             r.expire(bus.LIVE, LIVE_TTL)
             bus.beat(r, "capture", target=interface_or_pcap, state=bus.text(r.hget(bus.LIVE, "state") or ""))
 
+    # one rolling state for the whole capture run, kept across flow-meter restarts.
+    # NIDS_WINDOW_FEATURES=0 / NIDS_RATE_ALARM=0 turn either off.
+    window = RollingWindow() if os.environ.get("NIDS_WINDOW_FEATURES", "1") != "0" else None
+    rate = RateAlarm(threshold=int(os.environ.get("NIDS_RATE_THRESHOLD", RateAlarm().threshold))) \
+        if os.environ.get("NIDS_RATE_ALARM", "1") != "0" else None
+
     sent, next_id, quick_failures = 0, 0, 0
     try:
         while True:
@@ -188,7 +215,8 @@ def capture(r: redis.Redis, interface_or_pcap: str, source: str, batch_size: int
                 [sys.executable, "-m", "nids.capture.flowmeter", mode, interface_or_pcap, out])
             began = time.time()
             try:
-                n, next_id = _stream(r, out, process, source, batch_size, drop_empty_flows, next_id, heartbeat)
+                n, next_id = _stream(r, out, process, source, batch_size, drop_empty_flows, next_id,
+                                     heartbeat, window=window, rate=rate)
                 sent += n
             finally:
                 process.terminate()
