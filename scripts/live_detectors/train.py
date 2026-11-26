@@ -33,6 +33,7 @@ import argparse
 import hashlib
 import json
 import sys
+from pathlib import Path
 from datetime import datetime, timezone
 
 import joblib
@@ -220,14 +221,21 @@ def main():
     parser.add_argument("--force", action="store_true", help="install the models even if the gate fails")
     parser.add_argument("--evaluate-only", action="store_true", help="report results, install nothing")
     parser.add_argument("--results", default="live", help="folder under results/ for this run's tables")
+    parser.add_argument("--models-out", type=Path, default=MODELS,
+                        help="where to write promoted models (default: models/live). Use a separate\n"
+                             "folder to train a candidate set without touching the deployed models.")
     parser.add_argument("--ablation", action="store_true",
                         help="also compare conflict-handling rules on the test split (conflict_rules.csv)")
+    parser.add_argument("--no-window", action="store_true",
+                        help="omit the per-source window features (reproduce the single-flow baseline)")
     parser.add_argument("--drop-port", action="store_true",
                         help="train without Destination Port (port-shortcut sensitivity analysis)")
     args = parser.parse_args()
 
-    features = dp.common_features(drop_port=args.drop_port)
-    installed_manifest = json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {}
+    models_dir = args.models_out
+    manifest_path = models_dir / "manifest.json"
+    features = dp.common_features(drop_port=args.drop_port, window=not args.no_window)
+    installed_manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
     comparable = installed_manifest.get("protocol") == PROTOCOL
     if args.only and not comparable:
         sys.exit("--only reuses installed models, but they were trained under a different split and "
@@ -255,7 +263,7 @@ def main():
     trained, detectors = [], []
     for name, attacks in KNOWLEDGE.items():
         if args.only and name not in args.only:
-            detectors.append(joblib.load(MODELS / f"{name}.joblib"))
+            detectors.append(joblib.load(models_dir / f"{name}.joblib"))
             print(f"{name}: kept the saved model")
             continue
         keep = ["Benign", *attacks]
@@ -276,7 +284,7 @@ def main():
     taus = novelty_thresholds(detectors, val, features)
 
     baseline, tests = None, None
-    installed = sorted(MODELS.glob("*.joblib"))
+    installed = sorted(models_dir.glob("*.joblib"))
     if installed and comparable and not args.evaluate_only:
         print("\ninstalled models on the same validation flows:")
         before, before_summary, before_verdict = evaluate([joblib.load(p) for p in installed], val, args.min_accuracy)
@@ -306,7 +314,7 @@ def main():
     intervals(test, verdict).to_csv(out / "intervals.csv")
     table.to_csv(out / "by_label.csv")
     (out / "summary.json").write_text(json.dumps({"protocol": PROTOCOL, "cleaning": cleaning, "metrics": summary,
-                                                  "args": vars(args), "knowledge": KNOWLEDGE}, indent=2))
+                                                  "args": vars(args), "knowledge": KNOWLEDGE}, indent=2, default=str))
     rates.to_frame("new").assign(installed=pd.Series(baseline["by_label"]) if baseline else np.nan) \
         .to_csv(out / "gate.csv")
     if args.ablation:
@@ -329,18 +337,18 @@ def main():
             sys.exit(1)
         print("--force: installing anyway")
 
-    MODELS.mkdir(parents=True, exist_ok=True)
+    models_dir.mkdir(parents=True, exist_ok=True)
     for d in detectors:
         d.clear_history()
     for d in trained:
-        joblib.dump(d, MODELS / f"{d.name}.joblib", compress=3)
-    files = sorted(MODELS / f"{name}.joblib" for name in KNOWLEDGE)
-    for stale in set(MODELS.glob("*.joblib")) - set(files):
+        joblib.dump(d, models_dir / f"{d.name}.joblib", compress=3)
+    files = sorted(models_dir / f"{name}.joblib" for name in KNOWLEDGE)
+    for stale in set(models_dir.glob("*.joblib")) - set(files):
         stale.unlink()  # a detector no longer in KNOWLEDGE must not keep running live
-    (MODELS / "novelty.json").write_text(json.dumps(taus, indent=1) + "\n")
+    (models_dir / "novelty.json").write_text(json.dumps(taus, indent=1) + "\n")
     sums = {p.name: sha256(p) for p in files}
-    (MODELS / "SHA256SUMS").write_text("".join(f"{h}  {n}\n" for n, h in sums.items()))
-    MANIFEST.write_text(json.dumps({
+    (models_dir / "SHA256SUMS").write_text("".join(f"{h}  {n}\n" for n, h in sums.items()))
+    manifest_path.write_text(json.dumps({
         "promoted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "protocol": PROTOCOL,
         "knowledge": KNOWLEDGE,
@@ -351,9 +359,9 @@ def main():
         "labs": args.labs,
         "sha256": sums,
         "args": vars(args),
-    }, indent=2) + "\n")
-    print("\ninstalled", ", ".join(str(MODELS / f"{d.name}.joblib") for d in trained) or "no new models",
-          f"(manifest: {MANIFEST})")
+    }, indent=2, default=str) + "\n")
+    print("\ninstalled", ", ".join(str(models_dir / f"{d.name}.joblib") for d in trained) or "no new models",
+          f"(manifest: {manifest_path})")
 
 
 def novelty_thresholds(detectors, val: pd.DataFrame, features: list[str], keep_benign: float = 0.99) -> dict:

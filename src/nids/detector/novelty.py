@@ -20,7 +20,8 @@ from sklearn.metrics import roc_auc_score
 
 def novelty_scores(detector, samples: pd.DataFrame) -> np.ndarray:
     """``n_d(x)`` for each sample: the distance to the detector's nearest K-Means centre."""
-    xt = detector.model.transform(samples[detector.features])
+    from .detector import select_features
+    xt = detector.model.transform(select_features(samples, detector.features))
     return detector.model.kmeans.transform(xt).min(axis=1).astype(float)
 
 

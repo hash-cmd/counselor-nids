@@ -73,7 +73,8 @@ def detector_proba(detector, X) -> np.ndarray:
     """A single attack probability per row from one detector: the mean of the selected
     classifiers' ``predict_proba`` in that row's cluster (a softer signal than the binary vote)."""
     m = detector.model
-    Xt = m.transform(X[detector.features])
+    from ..detector.detector import select_features
+    Xt = m.transform(select_features(X, detector.features))
     clusters = m.assign_clusters(Xt)
     out = np.zeros(len(X))
     for k in np.unique(clusters):

@@ -17,26 +17,37 @@ import numpy as np
 import pandas as pd
 
 from nids.datasets.flow_features import CIC2018_TO_2017
+from nids.datasets.window_features import WINDOW_FEATURES, add_window_features
 
 DEST_PORT = "Destination Port"
+BASE_FEATURES = list(CIC2018_TO_2017.values())
 
 
-def common_features(drop_port: bool = False) -> list[str]:
+def common_features(drop_port: bool = False, window: bool = True) -> list[str]:
     """The shared flow features used as model input. ``drop_port=True`` omits the destination
-    port for the port-shortcut sensitivity analysis (Section 3.4.3)."""
-    feats = list(CIC2018_TO_2017.values())
-    return [f for f in feats if f != DEST_PORT] if drop_port else feats
+    port (port-shortcut sensitivity analysis); ``window=False`` omits the per-source window
+    features (``window_features``), e.g. to reproduce the single-flow baseline."""
+    feats = [f for f in BASE_FEATURES if not (drop_port and f == DEST_PORT)]
+    return feats + (WINDOW_FEATURES if window else [])
 
 
 def prepare(flows: pd.DataFrame, features: list[str]) -> tuple[pd.DataFrame, dict]:
-    """Clean and de-duplicate flows, and add the binary ``is_attack`` target. Returns the prepared
-    frame and a report of how many rows were dropped and why."""
+    """Clean and de-duplicate flows, add the ``is_attack`` target, and compute the per-source
+    window features. Returns the prepared frame and a report of what was dropped.
+
+    Cleaning and de-duplication use the base per-flow features only: the window features are
+    derived from a source's behaviour over time, so two genuinely distinct flood flows must not
+    be collapsed just because their window counts match. They are computed after de-duplication,
+    in flow-start order, exactly as the live extractor computes them (``RollingWindow``)."""
+    base = [f for f in features if f in flows.columns and f not in WINDOW_FEATURES]
     n0 = len(flows)
-    flows = flows.replace([np.inf, -np.inf], np.nan).dropna(subset=features)
+    flows = flows.replace([np.inf, -np.inf], np.nan).dropna(subset=base)
     n_invalid = n0 - len(flows)
-    flows = flows.drop_duplicates(subset=features).reset_index(drop=True)
+    flows = flows.drop_duplicates(subset=base).reset_index(drop=True)
     n_dup = n0 - n_invalid - len(flows)
     flows["is_attack"] = flows["label"] != "Benign"
+    if any(f in features for f in WINDOW_FEATURES):
+        flows = add_window_features(flows)
     return flows, {"rows_in": n0, "removed_invalid": n_invalid, "removed_duplicate": n_dup,
                    "rows_out": len(flows)}
 

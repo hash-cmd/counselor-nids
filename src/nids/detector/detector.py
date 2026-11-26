@@ -13,6 +13,13 @@ import pandas as pd
 from .model import DetectorModel
 
 
+def select_features(frame: pd.DataFrame, features) -> pd.DataFrame:
+    """The model's feature columns, in order. A feature the frame lacks — e.g. a per-source
+    window feature when the caller has only an isolated flow — is filled with 0.0, the value an
+    isolated flow would have, so a model trained with those features still runs everywhere."""
+    return frame.reindex(columns=list(features), fill_value=0.0)
+
+
 @dataclass(frozen=True)
 class Advice:
     counselor: str
@@ -37,7 +44,7 @@ class Detector:
         For conflicts, ``prediction`` holds the best local classifier's output until
         the counselors network replaces it.
         """
-        Xt = self.model.transform(samples[self.features])
+        Xt = self.model.transform(select_features(samples, self.features))
         clusters = self.model.assign_clusters(Xt)
         n = len(samples)
         prediction = np.zeros(n, dtype=bool)
@@ -116,7 +123,7 @@ class Detector:
     def learn(self, samples: pd.DataFrame, labels) -> None:
         """Store advised samples as new signatures (Figure 1, steps 8.A-C)."""
         if len(samples):
-            self.new_signatures.append((samples[self.features], np.asarray(labels, dtype=bool)))
+            self.new_signatures.append((select_features(samples, self.features), np.asarray(labels, dtype=bool)))
 
     def retrain(self, eval_share: float = 0.0) -> int:
         """Rebuild the model with the learned signatures; returns how many were added.
@@ -132,4 +139,4 @@ class Detector:
     def adapt(self, samples: pd.DataFrame, labels, prior_weight: float = 200.0, reselect: bool = False) -> int:
         """Adaptive trust: re-estimate cluster accuracies on labelled samples of the
         traffic being watched (see ``DetectorModel.adapt``)."""
-        return self.model.adapt(samples[self.features], labels, prior_weight, reselect)
+        return self.model.adapt(select_features(samples, self.features), labels, prior_weight, reselect)

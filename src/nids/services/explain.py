@@ -64,7 +64,8 @@ def feature_contributions(detector, flow, top: int = 6) -> list[dict]:
     from ..detector import attribution
 
     m = detector.model
-    Xt = m.transform(flow[detector.features])
+    from ..detector.detector import select_features
+    Xt = m.transform(select_features(flow, detector.features))
     cluster = int(m.assign_clusters(Xt)[0])
     vals = attribution.attributions(m, Xt[:1], cluster)[0]
     ranked = sorted(zip(attribution.feature_names(m), vals), key=lambda kv: -abs(float(kv[1])))[:top]
