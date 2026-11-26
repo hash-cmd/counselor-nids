@@ -204,7 +204,8 @@ def capture(r: redis.Redis, interface_or_pcap: str, source: str, batch_size: int
     # one rolling state for the whole capture run, kept across flow-meter restarts.
     # NIDS_WINDOW_FEATURES=0 / NIDS_RATE_ALARM=0 turn either off.
     window = RollingWindow() if os.environ.get("NIDS_WINDOW_FEATURES", "1") != "0" else None
-    rate = RateAlarm(threshold=int(os.environ.get("NIDS_RATE_THRESHOLD", RateAlarm().threshold))) \
+    rate = RateAlarm(threshold=int(os.environ.get("NIDS_RATE_THRESHOLD", RateAlarm().threshold)),
+                     port_threshold=int(os.environ.get("NIDS_RATE_PORT_THRESHOLD", RateAlarm().port_threshold))) \
         if os.environ.get("NIDS_RATE_ALARM", "1") != "0" else None
 
     sent, next_id, quick_failures = 0, 0, 0

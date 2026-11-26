@@ -23,8 +23,9 @@ import pandas as pd
 
 DETECTOR = "rate"
 DEFAULT_WINDOW = 10.0
-DEFAULT_THRESHOLD = 100   # connection-only flows from one source within the window
-DEFAULT_COOLDOWN = 30.0   # seconds a source stays quiet after an alert
+DEFAULT_THRESHOLD = 100       # connection-only flows from one source within the window (scan / SYN flood)
+DEFAULT_PORT_THRESHOLD = 100  # connections from one source to one port within the window (HTTP flood / Slowloris)
+DEFAULT_COOLDOWN = 30.0       # seconds a source stays quiet after an alert
 _CONNONLY_MAX_PACKETS = 3
 
 
@@ -35,53 +36,80 @@ def _payload_packets(df: pd.DataFrame) -> np.ndarray:
 
 
 class RateAlarm:
+    """Two behaviour-based alarms the per-flow ML cannot raise:
+
+    - connection-only rate: many empty flows (SYN/RST) from one source — a scan or SYN flood;
+    - same-port rate: many connections from one source to one port — an HTTP flood (Hulk) or a
+      Slowloris holding hundreds of slow connections. Slowloris connections carry partial headers
+      (not connection-only), so only this second alarm catches them. A very slow, low-fan-out
+      Slowloris that stays under ``port_threshold`` is at the detection floor and is Snort's job
+      (incomplete-header timeout).
+    """
+
     def __init__(self, window: float = DEFAULT_WINDOW, threshold: int = DEFAULT_THRESHOLD,
-                 cooldown: float = DEFAULT_COOLDOWN):
+                 port_threshold: int = DEFAULT_PORT_THRESHOLD, cooldown: float = DEFAULT_COOLDOWN):
         self.window = window
         self.threshold = threshold
+        self.port_threshold = port_threshold
         self.cooldown = cooldown
-        self._events: dict[str, deque] = {}   # src_ip -> deque of connection-only flow times
-        self._muted_until: dict[str, float] = {}
+        self._connonly: dict[str, deque] = {}        # src_ip -> times of connection-only flows
+        self._per_port: dict[tuple, deque] = {}       # (src_ip, dport) -> times of all its connections
+        self._muted_until: dict[str, float] = {}      # src_ip -> time until which scan/flood alerts are muted
+        self._muted_port: dict[tuple, float] = {}      # (src, dport) -> muted until
 
     def feed(self, frame: pd.DataFrame, now: float | None = None) -> list[dict]:
         """Return rate alerts for ``frame`` (the full batch, empties included)."""
         if frame.empty or "src_ip" not in frame:
             return []
         connonly = _payload_packets(frame) <= _CONNONLY_MAX_PACKETS
-        if not connonly.any():
-            return []
-        sub = frame[connonly]
-        src = sub["src_ip"].astype(str).to_numpy()
-        start = sub["flow_start"].astype(float).to_numpy() if "flow_start" in sub \
-            else sub["timestamp"].astype(float).to_numpy()
-        dst = sub["dst_ip"].astype(str).to_numpy() if "dst_ip" in sub else np.array([""] * len(sub))
-        dport = sub["conn_dst_port"].to_numpy() if "conn_dst_port" in sub else np.array([""] * len(sub))
-        rid = sub["record_id"].to_numpy() if "record_id" in sub else np.arange(len(sub))
+        src = frame["src_ip"].astype(str).to_numpy()
+        start = frame["flow_start"].astype(float).to_numpy() if "flow_start" in frame \
+            else frame["timestamp"].astype(float).to_numpy()
+        dst = frame["dst_ip"].astype(str).to_numpy() if "dst_ip" in frame else np.array([""] * len(frame))
+        dport = frame["conn_dst_port"].to_numpy() if "conn_dst_port" in frame else np.array([""] * len(frame))
+        rid = frame["record_id"].to_numpy() if "record_id" in frame else np.arange(len(frame))
 
-        alerts = []
-        for i in range(len(sub)):
-            s, t = src[i], start[i]
-            events = self._events.setdefault(s, deque())
+        def recent(events: deque, t: float) -> int:
             events.append(t)
             cutoff = t - self.window
             while events and events[0] < cutoff:
                 events.popleft()
-            if len(events) >= self.threshold and t >= self._muted_until.get(s, 0.0):
-                distinct_ports = sub[src == s]["conn_dst_port"].nunique() if "conn_dst_port" in sub else 0
-                kind = "port scan" if distinct_ports >= 20 else "connection flood"
-                alerts.append({
-                    "detector": DETECTOR, "record_id": int(rid[i]), "timestamp": float(t),
-                    "resolution": "rate", "counselor": "",
-                    "msg": f"{kind}: {len(events)} connection-only flows from {s} in {self.window:.0f}s",
-                    "src": f"{s}", "dst": f"{dst[i]}:{dport[i]}".rstrip(":"),
-                })
-                self._muted_until[s] = t + self.cooldown
+            return len(events)
+
+        alerts = []
+        for i in range(len(frame)):
+            s, t, p = src[i], start[i], dport[i]
+            # same-port rate: HTTP flood / Slowloris (connections to one port, payload or not)
+            key = (s, p)
+            n_port = recent(self._per_port.setdefault(key, deque()), t)
+            if n_port >= self.port_threshold and t >= self._muted_port.get(key, 0.0):
+                alerts.append(self._alert(rid[i], t, s, dst[i], p,
+                                          f"service flood (possible DoS): {n_port} connections from {s} "
+                                          f"to port {p} in {self.window:.0f}s"))
+                self._muted_port[key] = t + self.cooldown
+            # connection-only rate: scan / SYN flood
+            if connonly[i]:
+                n = recent(self._connonly.setdefault(s, deque()), t)
+                if n >= self.threshold and t >= self._muted_until.get(s, 0.0):
+                    ports = len({k[1] for k in self._per_port if k[0] == s})
+                    kind = "port scan" if ports >= 20 else "connection flood"
+                    alerts.append(self._alert(rid[i], t, s, dst[i], p,
+                                              f"{kind}: {n} connection-only flows from {s} in {self.window:.0f}s"))
+                    self._muted_until[s] = t + self.cooldown
         return alerts
 
+    def _alert(self, rid, t, s, d, p, msg) -> dict:
+        return {"detector": DETECTOR, "record_id": int(rid), "timestamp": float(t),
+                "resolution": "rate", "counselor": "", "msg": msg,
+                "src": f"{s}", "dst": f"{d}:{p}".rstrip(":")}
+
     def trim(self, max_sources: int = 100_000) -> None:
-        for s in [s for s, ev in self._events.items() if not ev]:
-            self._events.pop(s, None)
+        for s in [s for s, ev in self._connonly.items() if not ev]:
+            self._connonly.pop(s, None)
             self._muted_until.pop(s, None)
-        if len(self._events) > max_sources:
-            for s in list(self._events)[: len(self._events) - max_sources]:
-                del self._events[s]
+        for k in [k for k, ev in self._per_port.items() if not ev]:
+            self._per_port.pop(k, None)
+            self._muted_port.pop(k, None)
+        if len(self._per_port) > max_sources:
+            for k in list(self._per_port)[: len(self._per_port) - max_sources]:
+                del self._per_port[k]
